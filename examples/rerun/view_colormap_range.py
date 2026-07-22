@@ -14,9 +14,9 @@ own extent, and colours are not comparable across frames.
 
 Usage::
 
-    python examples/view_colormap_range.py ~/data/rellis
-    python examples/view_colormap_range.py ~/data/rellis --sequence 00000 --every 5
-    python examples/view_colormap_range.py ~/data/rellis --rmax 30
+    python examples/rerun/view_colormap_range.py ~/data/rellis
+    python examples/rerun/view_colormap_range.py ~/data/rellis --sequence 00000 --every 5
+    python examples/rerun/view_colormap_range.py ~/data/rellis --rmax 30
 """
 
 from __future__ import annotations

@@ -10,9 +10,9 @@ Requires: apairo-rr, open3d  (pip install apairo-rr open3d)
 
 Usage::
 
-    python examples/view_gicp_odometry.py ~/data/rellis --sequence 00000
-    python examples/view_gicp_odometry.py ~/data/rellis --sequence 00000 --voxel-size 0.3
-    python examples/view_gicp_odometry.py ~/data/rellis --sequence 00000 --every 5
+    python examples/rerun/view_gicp_odometry.py ~/data/rellis --sequence 00000
+    python examples/rerun/view_gicp_odometry.py ~/data/rellis --sequence 00000 --voxel-size 0.3
+    python examples/rerun/view_gicp_odometry.py ~/data/rellis --sequence 00000 --every 5
 """
 
 from __future__ import annotations

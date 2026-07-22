@@ -7,9 +7,9 @@ Requires: apairo-rr  (pip install apairo-rr)
 
 Usage::
 
-    python examples/view_traversability_from_labels.py ~/data/rellis
-    python examples/view_traversability_from_labels.py ~/data/rellis --sequence 00000 --every 5
-    python examples/view_traversability_from_labels.py ~/data/rellis --ids 1 3 10
+    python examples/rerun/view_traversability_from_labels.py ~/data/rellis
+    python examples/rerun/view_traversability_from_labels.py ~/data/rellis --sequence 00000 --every 5
+    python examples/rerun/view_traversability_from_labels.py ~/data/rellis --ids 1 3 10
 """
 
 from __future__ import annotations

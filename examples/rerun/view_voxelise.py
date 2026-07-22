@@ -7,9 +7,9 @@ Requires: apairo-rr  (pip install apairo-rr)
 
 Usage::
 
-    python examples/view_voxelise.py ~/data/rellis
-    python examples/view_voxelise.py ~/data/rellis --voxel-size 0.2 --sequence 00000
-    python examples/view_voxelise.py ~/data/rellis --voxel-size 0.5 --every 5
+    python examples/rerun/view_voxelise.py ~/data/rellis
+    python examples/rerun/view_voxelise.py ~/data/rellis --voxel-size 0.2 --sequence 00000
+    python examples/rerun/view_voxelise.py ~/data/rellis --voxel-size 0.5 --every 5
 """
 
 from __future__ import annotations

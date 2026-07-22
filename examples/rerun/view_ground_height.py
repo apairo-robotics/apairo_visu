@@ -15,11 +15,11 @@ Requires: apairo-rr, CSF  (pip install apairo-rr CSF)
 
 Usage::
 
-    python examples/view_ground_height.py ~/data/rellis
-    python examples/view_ground_height.py ~/data/rellis --sequence 00000 --every 5
-    python examples/view_ground_height.py ~/data/rellis --priors --tau 1.5
-    python examples/view_ground_height.py ~/data/rellis --method ransac
-    python examples/view_ground_height.py ~/data/rellis --hmin 0 --hmax 5
+    python examples/rerun/view_ground_height.py ~/data/rellis
+    python examples/rerun/view_ground_height.py ~/data/rellis --sequence 00000 --every 5
+    python examples/rerun/view_ground_height.py ~/data/rellis --priors --tau 1.5
+    python examples/rerun/view_ground_height.py ~/data/rellis --method ransac
+    python examples/rerun/view_ground_height.py ~/data/rellis --hmin 0 --hmax 5
 """
 
 from __future__ import annotations

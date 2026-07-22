@@ -4,10 +4,10 @@ Compares the raw point cloud with the range-filtered version side by side.
 
 Usage::
 
-    python examples/view_robot_filter.py ~/data/rellis
-    python examples/view_robot_filter.py ~/data/rellis --min-range 0.5
-    python examples/view_robot_filter.py ~/data/rellis --min-range 1.0 --norm L2    
-    python examples/view_robot_filter.py ~/data/rellis --sequence 00000 --every 5
+    python examples/rerun/view_robot_filter.py ~/data/rellis
+    python examples/rerun/view_robot_filter.py ~/data/rellis --min-range 0.5
+    python examples/rerun/view_robot_filter.py ~/data/rellis --min-range 1.0 --norm L2    
+    python examples/rerun/view_robot_filter.py ~/data/rellis --sequence 00000 --every 5
 """
 
 from __future__ import annotations

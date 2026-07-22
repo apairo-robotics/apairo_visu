@@ -15,10 +15,10 @@ under a channel and point ``--pred-key`` at it; everything else is unchanged.
 
 Usage::
 
-    python examples/view_traversability_inference.py
-    python examples/view_traversability_inference.py ~/data/rellis --every 10
-    python examples/view_traversability_inference.py --sequence 00000 --flip 0.2
-    python examples/view_traversability_inference.py --pred-key my_model_pred
+    python examples/rerun/view_traversability_inference.py
+    python examples/rerun/view_traversability_inference.py ~/data/rellis --every 10
+    python examples/rerun/view_traversability_inference.py --sequence 00000 --flip 0.2
+    python examples/rerun/view_traversability_inference.py --pred-key my_model_pred
 """
 
 from __future__ import annotations

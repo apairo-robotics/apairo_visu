@@ -10,9 +10,9 @@ Requires: apairo-rr, kiss-icp  (pip install apairo-rr kiss-icp)
 
 Usage::
 
-    python examples/view_kissicp_odometry.py ~/data/rellis --sequence 00000
-    python examples/view_kissicp_odometry.py ~/data/rellis --sequence 00000 --voxel-size 0.5
-    python examples/view_kissicp_odometry.py ~/data/rellis --sequence 00000 --every 5
+    python examples/rerun/view_kissicp_odometry.py ~/data/rellis --sequence 00000
+    python examples/rerun/view_kissicp_odometry.py ~/data/rellis --sequence 00000 --voxel-size 0.5
+    python examples/rerun/view_kissicp_odometry.py ~/data/rellis --sequence 00000 --every 5
 """
 
 from __future__ import annotations

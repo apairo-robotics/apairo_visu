@@ -14,9 +14,9 @@ Requires pre-voxelised channels (voxelised, voxelised_trav_gt) on disk.
 
 Usage::
 
-    python examples/view_augmentation.py ~/data/rellis
-    python examples/view_augmentation.py ~/data/rellis --pitch-angle 0.4
-    python examples/view_augmentation.py ~/data/rellis --sequence 00001 --every 10
+    python examples/rerun/view_augmentation.py ~/data/rellis
+    python examples/rerun/view_augmentation.py ~/data/rellis --pitch-angle 0.4
+    python examples/rerun/view_augmentation.py ~/data/rellis --sequence 00001 --every 10
 """
 
 from __future__ import annotations

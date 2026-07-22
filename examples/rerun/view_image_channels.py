@@ -13,11 +13,11 @@ Pass ``--no-lidar`` to view the image channels alone (no point cloud assumed).
 
 Usage::
 
-    python examples/view_image_channels.py ~/data/tartan_kitti
-    python examples/view_image_channels.py ~/data/tartan_kitti --every 5
-    python examples/view_image_channels.py ~/data/tartan_kitti \
+    python examples/rerun/view_image_channels.py ~/data/tartan_kitti
+    python examples/rerun/view_image_channels.py ~/data/tartan_kitti --every 5
+    python examples/rerun/view_image_channels.py ~/data/tartan_kitti \
         --images image_left_color image_right
-    python examples/view_image_channels.py ~/data/tartan_kitti --no-lidar
+    python examples/rerun/view_image_channels.py ~/data/tartan_kitti --no-lidar
 """
 
 from __future__ import annotations

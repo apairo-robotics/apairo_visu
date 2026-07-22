@@ -5,9 +5,9 @@
   Pipeline 3 — Trav — labels      : TraversabilityFromLabels on-the-fly
 
 Usage:
-    python examples/view_rellis_traversability.py
-    python examples/view_rellis_traversability.py --root ~/data/rellis --every 5
-    python examples/view_rellis_traversability.py --sequence 00000
+    python examples/rerun/view_rellis_traversability.py
+    python examples/rerun/view_rellis_traversability.py --root ~/data/rellis --every 5
+    python examples/rerun/view_rellis_traversability.py --sequence 00000
 """
 
 from __future__ import annotations

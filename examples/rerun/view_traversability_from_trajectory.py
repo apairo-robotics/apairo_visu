@@ -5,9 +5,9 @@ TraversabilityFromTrajectory — no data written to disk.
 
 Usage::
 
-    python examples/view_traversability_from_trajectory.py
-    python examples/view_traversability_from_trajectory.py --root ~/data/rellis --sequence 00000
-    python examples/view_traversability_from_trajectory.py --sequence 00000 \\
+    python examples/rerun/view_traversability_from_trajectory.py
+    python examples/rerun/view_traversability_from_trajectory.py --root ~/data/rellis --sequence 00000
+    python examples/rerun/view_traversability_from_trajectory.py --sequence 00000 \\
         --robot-radius 1.5 --every 5
 """
 
