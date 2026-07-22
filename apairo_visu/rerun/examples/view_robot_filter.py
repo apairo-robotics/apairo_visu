@@ -17,8 +17,8 @@ from pathlib import Path
 import numpy as np
 
 import apairo
-import apairo_rr
-from apairo_rr import Pipeline
+import apairo_visu.rerun
+from apairo_visu.rerun import Pipeline
 from apairo_transform import RangeFilter
 
 from utils import get_generic_argparser_rellis
@@ -67,7 +67,7 @@ def main() -> None:
     else:
         frames = range(args.idx, n, args.every)
 
-    rellis_cfg = apairo_rr.load_label_config("rellis")
+    rellis_cfg = apairo_visu.rerun.load_label_config("rellis")
 
     norm = _MAP_NORM.get(args.norm) if args.norm in _MAP_NORM.keys() else L2
 
@@ -77,7 +77,7 @@ def main() -> None:
     ]
     label_cfgs = [rellis_cfg, rellis_cfg]
 
-    apairo_rr.view(
+    apairo_visu.rerun.view(
         ds,
         label_cfgs=label_cfgs,
         frames=frames,

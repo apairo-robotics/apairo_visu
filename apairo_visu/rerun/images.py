@@ -1,9 +1,9 @@
-"""Image-channel viewing for the apairo_rr viewer.
+"""Image-channel viewing for the apairo_visu.rerun viewer.
 
-Where :class:`~apairo_rr.Pipeline` describes how a point-cloud channel becomes a
+Where :class:`~apairo_visu.rerun.Pipeline` describes how a point-cloud channel becomes a
 3D view, :class:`ImageChannel` describes how a 2D image channel becomes a Rerun
 2D view.  Pass a list of them (or plain channel-key strings) to
-:func:`~apairo_rr.view` via ``images=`` to watch camera / depth / BEV channels
+:func:`~apairo_visu.rerun.view` via ``images=`` to watch camera / depth / BEV channels
 evolve along the timeline next to the point clouds.
 """
 
@@ -26,7 +26,7 @@ class ImageChannel:
         name:     Display title for the 2D view (defaults to *key*).
         colormap: Optional ``(array) -> (H, W, 3) uint8`` callable applied before
                   logging — use it to colourise a scalar map (depth, height,
-                  cost) with :func:`~apairo_rr.colorize`.  ``None`` logs the raw
+                  cost) with :func:`~apairo_visu.rerun.colorize`.  ``None`` logs the raw
                   array (RGB or grayscale) directly.
 
     Examples::

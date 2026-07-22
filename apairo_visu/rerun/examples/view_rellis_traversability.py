@@ -18,8 +18,8 @@ from pathlib import Path
 import numpy as np
 
 import apairo
-import apairo_rr
-from apairo_rr import Pipeline
+import apairo_visu.rerun
+from apairo_visu.rerun import Pipeline
 from apairo_preprocess import TraversabilityFromLabels, TraversabilityFromTrajectory
 from apairo_transform import RangeFilter
 
@@ -81,9 +81,9 @@ def main() -> None:
 
     rf = RangeFilter(max=50.0)
 
-    apairo_rr.view(
+    apairo_visu.rerun.view(
         ds,
-        label_cfgs = [apairo_rr.load_label_config("rellis"), cfg_trav, cfg_trav],
+        label_cfgs = [apairo_visu.rerun.load_label_config("rellis"), cfg_trav, cfg_trav],
         poses      = list(poses_4x4),
         frames     = frames,
         pipelines  = [

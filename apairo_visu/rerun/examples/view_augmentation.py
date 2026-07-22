@@ -24,8 +24,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import apairo
-import apairo_rr
-from apairo_rr import Pipeline
+import apairo_visu.rerun
+from apairo_visu.rerun import Pipeline
 from apairo_transform import RandomFlip, RandomRotation
 
 from utils import get_generic_argparser_rellis
@@ -82,7 +82,7 @@ def main() -> None:
         Pipeline("Combined",     [yaw, flipx, flipy, pitch], point_key="voxelised", label_key="voxelised_trav_gt"),
     ]
 
-    apairo_rr.view(
+    apairo_visu.rerun.view(
         ds,
         label_cfgs=[_BINARY_CFG] * len(pipelines),
         frames=frames,

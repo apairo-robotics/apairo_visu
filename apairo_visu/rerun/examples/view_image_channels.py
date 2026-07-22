@@ -1,13 +1,13 @@
 """Watch image channels evolve over time, beside the LiDAR point cloud.
 
-apairo_rr can now display 2D image channels as Rerun 2D views that update along
+apairo_visu.rerun can now display 2D image channels as Rerun 2D views that update along
 the timeline, so you can replay a sequence and see the cameras (and any other
 image-like sensor) evolve frame by frame next to the point cloud.
 
 This example uses the TartanDrive layout (``TartanKittiDataset``), which carries
 several camera channels (``image_left_color``, ``image_right``) plus a depth map
 (``depth_left``).  RGB channels are logged as-is; the depth map is colourised on
-the fly with :func:`apairo_rr.colorize`.
+the fly with :func:`apairo_visu.rerun.colorize`.
 
 Pass ``--no-lidar`` to view the image channels alone (no point cloud assumed).
 
@@ -26,8 +26,8 @@ import argparse
 from pathlib import Path
 
 import apairo
-import apairo_rr
-from apairo_rr import ImageChannel, Pipeline, colorize
+import apairo_visu.rerun
+from apairo_visu.rerun import ImageChannel, Pipeline, colorize
 
 _DEFAULT_ROOT = Path.home() / "data" / "tartan_kitti"
 _DEFAULT_IMAGES = ["image_left_color", "image_right"]
@@ -83,7 +83,7 @@ def main() -> None:
         Pipeline("LiDAR", point_key=_POINT_KEY, label_key=None)
     ]
 
-    apairo_rr.view(
+    apairo_visu.rerun.view(
         ds,
         pipelines=pipelines,
         images=image_channels,

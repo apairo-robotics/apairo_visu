@@ -16,8 +16,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import apairo
-import apairo_rr
-from apairo_rr import Pipeline, Preprocess
+import apairo_visu.rerun
+from apairo_visu.rerun import Pipeline, Preprocess
 from apairo_preprocess import TraversabilityFromTrajectory
 from apairo_transform import RangeFilter
 
@@ -70,9 +70,9 @@ def main() -> None:
 
     print(f"[params] robot_radius={args.robot_radius}, height=[{args.height_min}, {args.height_max}]")
 
-    apairo_rr.view(
+    apairo_visu.rerun.view(
         ds,
-        label_cfgs=[apairo_rr.load_label_config("rellis"), cfg_trav],
+        label_cfgs=[apairo_visu.rerun.load_label_config("rellis"), cfg_trav],
         pose_key="poses",
         frames=display_frames,
         pipelines=[

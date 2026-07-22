@@ -124,13 +124,13 @@ class Preprocess:
     Example — odometry (FramePreprocessor, lazy)::
 
         ds = Preprocess(GICPOdometry(voxel_size=0.3)).run(ds, seq_frames, key="pose")
-        apairo_rr.view(ds, pose_key="pose", ...)
+        apairo_visu.rerun.view(ds, pose_key="pose", ...)
 
     Example — trajectory traversability (SequencePreprocessor, eager-on-first-access)::
 
         trav = TraversabilityFromTrajectory(robot_radius=1.0)
         ds = Preprocess(trav, default=None).run(ds, seq_frames, key="trav_traj")
-        apairo_rr.view(ds, pipelines=[Pipeline("Trav", label_key="trav_traj")], ...)
+        apairo_visu.rerun.view(ds, pipelines=[Pipeline("Trav", label_key="trav_traj")], ...)
     """
 
     def __init__(self, preprocessor, default: Any = _SENTINEL) -> None:

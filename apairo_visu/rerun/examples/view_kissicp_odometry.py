@@ -21,8 +21,8 @@ import argparse
 from pathlib import Path
 
 import apairo
-import apairo_rr
-from apairo_rr import Pipeline, Preprocess
+import apairo_visu.rerun
+from apairo_visu.rerun import Pipeline, Preprocess
 from apairo_preprocess import KissICPOdometry
 from apairo_transform import RangeFilter
 
@@ -67,9 +67,9 @@ def main() -> None:
         )
     ).run(ds, seq_frames, key="pose")
 
-    apairo_rr.view(
+    apairo_visu.rerun.view(
         ds_session,
-        label_cfgs=[apairo_rr.load_label_config("rellis")],
+        label_cfgs=[apairo_visu.rerun.load_label_config("rellis")],
         pose_key="pose",
         frames=seq_frames[args.idx::args.every],
         pipelines=[

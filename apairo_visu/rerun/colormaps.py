@@ -94,7 +94,7 @@ def colorize(
     Reuses the 1-D :data:`Gradient` primitives (:func:`red_blue`, :func:`green_red`)
     by flattening the image, colouring each pixel, then restoring the 2-D shape.
     Use it to turn a single-channel sensor map (depth, height, cost) into a colour
-    image for :class:`~apairo_rr.ImageChannel`.
+    image for :class:`~apairo_visu.rerun.ImageChannel`.
 
     Args:
         scalar:   ``(H, W)`` (or ``(H, W, 1)``) array of per-pixel scalars.

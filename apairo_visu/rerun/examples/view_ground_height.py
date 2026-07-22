@@ -30,9 +30,9 @@ from pathlib import Path
 import numpy as np
 
 import apairo
-import apairo_rr
-from apairo_rr import Pipeline, KeyColormap, red_blue
-from apairo_rr import Preprocess
+import apairo_visu.rerun
+from apairo_visu.rerun import Pipeline, KeyColormap, red_blue
+from apairo_visu.rerun import Preprocess
 from apairo_preprocess import (
     GroundSegmentationCSF,
     GroundSegmentationRANSAC,
@@ -138,7 +138,7 @@ def main() -> None:
             ))
             label_cfgs.append(None)
 
-    apairo_rr.view(
+    apairo_visu.rerun.view(
         ds,
         label_cfgs=label_cfgs,
         pipelines=pipelines,

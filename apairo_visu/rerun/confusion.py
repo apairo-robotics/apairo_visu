@@ -9,7 +9,7 @@ Compare a model's per-point traversability **prediction** against the
     FN  amber   predicted non-traversable, but it IS    (over-cautious error)
 
 Both inputs are binary masks (1 = traversable, 0 = non-traversable).  Drop
-:class:`TraversabilityConfusion` into a :class:`~apairo_rr.Pipeline` as a step
+:class:`TraversabilityConfusion` into a :class:`~apairo_visu.rerun.Pipeline` as a step
 and pass :data:`CONFUSION_CFG` as the pipeline's label config to get the legend.
 """
 
@@ -70,7 +70,7 @@ def confusion_class(pred, gt) -> np.ndarray:
 class TraversabilityConfusion:
     """Pipeline step: prediction + ground truth → per-point confusion class.
 
-    Drop into a :class:`~apairo_rr.Pipeline` as a step.  It reads two binary
+    Drop into a :class:`~apairo_visu.rerun.Pipeline` as a step.  It reads two binary
     traversability channels from the sample and returns the per-point confusion
     class id (see :func:`confusion_class`), so the viewer colours the cloud with
     :data:`CONFUSION_CFG` — TP green / TN gray / FP red / FN amber.
@@ -87,8 +87,8 @@ class TraversabilityConfusion:
 
     Example::
 
-        from apairo_rr import Pipeline, view
-        from apairo_rr.confusion import TraversabilityConfusion, CONFUSION_CFG
+        from apairo_visu.rerun import Pipeline, view
+        from apairo_visu.rerun.confusion import TraversabilityConfusion, CONFUSION_CFG
 
         view(
             ds,

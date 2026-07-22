@@ -9,7 +9,7 @@ Colours each point by its range (distance from the sensor) two ways, side by sid
     distance always maps to the same colour, in every frame.
 
 This is exactly the footgun that fixed ``vmin``/``vmax`` solve (see
-``apairo_rr.colormaps``): without a fixed range every frame renormalises on its
+``apairo_visu.rerun.colormaps``): without a fixed range every frame renormalises on its
 own extent, and colours are not comparable across frames.
 
 Usage::
@@ -26,8 +26,8 @@ from pathlib import Path
 import numpy as np
 
 import apairo
-import apairo_rr
-from apairo_rr import Pipeline, red_blue
+import apairo_visu.rerun
+from apairo_visu.rerun import Pipeline, red_blue
 
 from utils import get_generic_argparser_rellis
 
@@ -68,7 +68,7 @@ def main() -> None:
                  colormap_fn=lambda pts: red_blue(_range(pts), vmin=0.0, vmax=rmax)),
     ]
 
-    apairo_rr.view(
+    apairo_visu.rerun.view(
         ds,
         pipelines=pipelines,
         frames=frames,

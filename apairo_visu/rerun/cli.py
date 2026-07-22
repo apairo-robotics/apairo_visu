@@ -1,10 +1,10 @@
-"""apairo_rr command-line interface.
+"""apairo_visu.rerun command-line interface.
 
 Exposed two ways, both calling :func:`main`:
 
 * ``apairo rerun ...`` -- ecosystem subcommand discovered by the apairo CLI
   through the ``apairo.cli_plugins`` entry-point group.  apairo never depends on
-  apairo_rr; it dispatches to whatever is installed (same mechanism as
+  apairo_visu.rerun; it dispatches to whatever is installed (same mechanism as
   ``apairo extractor``).
 * ``apairo-rerun ...``  -- standalone console script.
 
@@ -31,7 +31,7 @@ import numpy as np
 
 import apairo
 
-from apairo_rr import ColumnColormap, ImageChannel, Pipeline, load_label_config, red_blue, view
+from apairo_visu.rerun import ColumnColormap, ImageChannel, Pipeline, load_label_config, red_blue, view
 
 # --label-config default per --as: the profiled datasets each have one
 # canonical class table; RawDataset/TartanKittiDataset have none, so --labels
@@ -232,7 +232,7 @@ def _build_parser() -> argparse.ArgumentParser:
                    help="write a .rrd file instead of spawning the viewer")
     p.add_argument("--web", action="store_true",
                    help="serve a web viewer instead of spawning the desktop app")
-    p.add_argument("--application-id", default="apairo_rr", dest="application_id",
+    p.add_argument("--application-id", default="apairo_visu.rerun", dest="application_id",
                    help="Rerun recording name shown in the viewer")
     return p
 

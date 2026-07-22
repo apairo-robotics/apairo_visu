@@ -24,9 +24,11 @@ dependencies = [
 [project.entry-points."apairo.cli_plugins"]
 studio = "apairo_visu.studio.cli:main"
 visu = "apairo_visu.__main__:main"
+rerun = "apairo_visu.rerun.cli:main"
 
 [project.optional-dependencies]
 studio = ["fastapi", "uvicorn[standard]"]
+rerun = ["rerun-sdk"]
 dev = ["pytest", "httpx"]
 
 [tool.setuptools.packages.find]
@@ -36,6 +38,7 @@ include = ["apairo_visu*"]
 [tool.setuptools.package-data]
 apairo_visu = [
     "configs/*.yaml",
+    "rerun/configs/*.yaml",
     "studio/web/*.html",
     "studio/web/*.css",
     "studio/web/src/*.js",

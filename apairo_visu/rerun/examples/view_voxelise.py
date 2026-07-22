@@ -19,8 +19,8 @@ import types
 from pathlib import Path
 
 import apairo
-import apairo_rr
-from apairo_rr import Pipeline
+import apairo_visu.rerun
+from apairo_visu.rerun import Pipeline
 from apairo_preprocess import VoxeliseLabels, VoxelisePointCloud
 from apairo_transform import RangeFilter
 
@@ -79,10 +79,10 @@ def main() -> None:
         frames = range(args.idx, n, args.every)
 
     voxelise_step = make_voxelise_step(args.voxel_size, max_range=args.max_range)
-    rellis_cfg = apairo_rr.load_label_config("rellis")
+    rellis_cfg = apairo_visu.rerun.load_label_config("rellis")
     rf = RangeFilter(max=args.max_range)
 
-    apairo_rr.view(
+    apairo_visu.rerun.view(
         ds,
         label_cfgs=[rellis_cfg, rellis_cfg],
         frames=frames,

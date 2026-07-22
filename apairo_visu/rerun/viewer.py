@@ -100,7 +100,7 @@ def view(
     point_key:  str = "lidar",
     label_key:  str | None = "labels",
     frames:     Iterable[int] | None = None,
-    application_id: str = "apairo_rr",
+    application_id: str = "apairo_visu.rerun",
     spawn: bool = True,
     save: str | Path | None = None,
     web: bool = False,
@@ -126,7 +126,7 @@ def view(
                         Mutually exclusive with *pose_key*.
         pose_key:       Sample key containing the per-frame 4×4 pose matrix.
                         Use this when the dataset was enriched with
-                        :class:`~apairo_rr.Preprocess` (e.g. ``key="pose"``).
+                        :class:`~apairo_visu.rerun.Preprocess` (e.g. ``key="pose"``).
                         Mutually exclusive with *poses*.
         pipelines:      Ordered list of :class:`Pipeline` objects.
                         Defaults to a single ``Pipeline("Raw")`` — unless
@@ -138,10 +138,10 @@ def view(
         images:         Image channels to display as 2D views beside the point
                         clouds, stacked vertically and updating along the
                         timeline.  Each item is either a sample-key string or an
-                        :class:`~apairo_rr.ImageChannel` (for a custom title or a
+                        :class:`~apairo_visu.rerun.ImageChannel` (for a custom title or a
                         colormap on a scalar map).  RGB ``img`` channels are
                         logged as-is; use ``ImageChannel(..., colormap=...)`` with
-                        :func:`~apairo_rr.colorize` for depth / height / cost
+                        :func:`~apairo_visu.rerun.colorize` for depth / height / cost
                         maps.  A channel missing from a frame keeps its last value
                         on screen, so async (multi-rate) sensors stay in sync.
         point_key:      Sample key for the point cloud array (default ``"lidar"``).

@@ -28,9 +28,9 @@ from pathlib import Path
 import numpy as np
 
 import apairo
-import apairo_rr
-from apairo_rr import Pipeline, Preprocess
-from apairo_rr.confusion import CONFUSION_CFG, TraversabilityConfusion
+import apairo_visu.rerun
+from apairo_visu.rerun import Pipeline, Preprocess
+from apairo_visu.rerun.confusion import CONFUSION_CFG, TraversabilityConfusion
 from apairo_preprocess import TraversabilityFromLabels
 
 from utils import get_generic_argparser_rellis
@@ -99,7 +99,7 @@ def main() -> None:
         "semantic_map": {0: "non-traversable", 1: "traversable"},
     }
 
-    apairo_rr.view(
+    apairo_visu.rerun.view(
         ds,
         label_cfgs=[cfg_trav, cfg_trav, CONFUSION_CFG],
         frames=frames,
