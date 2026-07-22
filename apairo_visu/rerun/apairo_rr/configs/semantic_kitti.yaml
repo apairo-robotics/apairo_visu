@@ -1,0 +1,85 @@
+# SemanticKITTI label configuration
+# Original IDs (before learning-map remapping).
+# Only IDs present in the dataset are listed.
+# traversable_map: road, parking, sidewalk, other-ground, terrain.
+
+ignore_index: 0
+
+color_map:
+  0:   [0,   0,   0]
+  1:   [0,   0,   255]
+  10:  [245, 150, 100]
+  11:  [245, 130, 69]
+  13:  [200, 40,  255]
+  15:  [30,  30,  255]
+  16:  [90,  30,  150]
+  18:  [255, 0,   255]
+  20:  [255, 150, 255]
+  30:  [75,  0,   75]
+  31:  [75,  0,   175]
+  32:  [0,   200, 255]
+  40:  [50,  120, 255]
+  44:  [0,   150, 255]
+  48:  [170, 255, 150]
+  49:  [150, 255, 170]
+  50:  [0,   175, 0]
+  51:  [0,   60,  135]
+  52:  [80,  240, 150]
+  60:  [150, 240, 255]
+  70:  [0,   0,   255]
+  71:  [255, 200, 0]
+  72:  [255, 120, 50]
+  80:  [200, 255, 0]
+  81:  [255, 200, 255]
+  99:  [128, 0,   0]
+  252: [245, 150, 100]
+  253: [200, 40,  255]
+  254: [30,  30,  255]
+  255: [90,  30,  150]
+  256: [255, 0,   255]
+  257: [255, 150, 255]
+  258: [75,  0,   75]
+  259: [75,  0,   175]
+
+semantic_map:
+  0:   unlabeled
+  1:   outlier
+  10:  car
+  11:  bicycle
+  13:  bus
+  15:  motorcycle
+  16:  on-rails
+  18:  truck
+  20:  other-vehicle
+  30:  person
+  31:  bicyclist
+  32:  motorcyclist
+  40:  road
+  44:  parking
+  48:  sidewalk
+  49:  other-ground
+  50:  building
+  51:  fence
+  52:  other-structure
+  60:  lane-marking
+  70:  vegetation
+  71:  trunk
+  72:  terrain
+  80:  pole
+  81:  traffic-sign
+  99:  other-object
+  252: moving-car
+  253: moving-bicyclist
+  254: moving-person
+  255: moving-motorcyclist
+  256: moving-on-rails
+  257: moving-bus
+  258: moving-truck
+  259: moving-other-vehicle
+
+traversable_map:
+  - 40  # road
+  - 44  # parking
+  - 48  # sidewalk
+  - 49  # other-ground
+  - 72  # terrain

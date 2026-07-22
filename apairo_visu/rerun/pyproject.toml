@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "apairo-rr"
+version = "0.1.0"
+description = "Rerun-based LiDAR visualisation for apairo datasets"
+authors = [
+  { name = "Augustin Bresset", email = "augustin.bresset@gmail.com" },
+]
+license = { text = "MIT" }
+requires-python = ">=3.11"
+dependencies = [
+    "numpy",
+    "rerun-sdk",
+    "PyYAML",
+    
+    "apairo @ git+https://github.com/apairo-robotics/apairo.git",
+]
+
+[project.scripts]
+apairo-rerun = "apairo_rr.cli:main"
+
+# Ecosystem dispatch: enables `apairo rerun ...` via apairo's plugin discovery
+# (apairo never depends on this package -- it finds it when installed).
+[project.entry-points."apairo.cli_plugins"]
+rerun = "apairo_rr.cli:main"
+
+[project.optional-dependencies]
+dev = ["pytest"]
+examples=[
+    "apairo-preprocess @ git+https://github.com/apairo-robotics/apairo_preprocess.git",
+    "apairo-transform @ git+https://github.com/apairo-robotics/apairo_transform.git",
+]
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["apairo_rr*"]
+
+[tool.setuptools.package-data]
+apairo_rr = ["configs/*.yaml"]
