@@ -38,7 +38,6 @@ include = ["apairo_visu*"]
 [tool.setuptools.package-data]
 apairo_visu = [
     "configs/*.yaml",
-    "rerun/configs/*.yaml",
     "studio/web/*.html",
     "studio/web/*.css",
     "studio/web/src/*.js",

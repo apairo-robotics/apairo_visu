@@ -10,37 +10,15 @@ import numpy as np
 import rerun as rr
 import rerun.blueprint as rrb
 
+# Label configs and their loader/normalizer live in the shared layer; the rerun
+# backend re-uses them. `normalize_color_map` also decodes hex colours, which the
+# old rerun-local copy could not (e.g. GOOSE's hex class colours -- a latent bug).
+from apairo_visu.colors import normalize_color_map
+from apairo_visu.config import load_label_config
+
 from .colormaps import ColumnColormap
 from .images import ImageChannel
 from .pipeline import Pipeline
-
-_CONFIGS_DIR = Path(__file__).parent / "configs"
-
-
-def load_label_config(name: str) -> dict:
-    """Load a built-in label config by name.
-
-    Args:
-        name: One of ``"rellis"``, ``"semantic_kitti"``, ``"goose"``.
-
-    Returns:
-        Dict with ``color_map`` (``{class_id: [R, G, B]}``) and
-        ``semantic_map`` (``{class_id: label_str}``) keys, ready to pass
-        to :func:`view` as ``label_cfg`` or ``label_cfgs``.
-
-    Raises:
-        FileNotFoundError: If *name* does not match any built-in config.
-    """
-    import yaml
-    path = _CONFIGS_DIR / f"{name}.yaml"
-    if not path.exists():
-        raise FileNotFoundError(f"No built-in config '{name}'. Available: {[p.stem for p in _CONFIGS_DIR.glob('*.yaml')]}")
-    with path.open() as f:
-        return yaml.safe_load(f)
-
-
-def _normalize_color_map(raw: dict) -> dict[int, list[int]]:
-    return {int(k): [int(c) for c in v] for k, v in raw.items()}
 
 
 _default_colormap = ColumnColormap(2)
@@ -76,7 +54,7 @@ def _channel_frame(dataset, idx: int):
 
 
 def _annotation_context(cfg: dict) -> list[rr.ClassDescription]:
-    color_map   = _normalize_color_map(cfg["color_map"])
+    color_map = normalize_color_map(cfg["color_map"])
     semantic_map = {int(k): v for k, v in cfg.get("semantic_map", {}).items()}
     return [
         rr.ClassDescription(info=rr.AnnotationInfo(
