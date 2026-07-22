@@ -18,6 +18,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 import numpy as np
+import projector
 from fastapi import Body, FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -29,6 +30,9 @@ from .registry import StudioRegistry
 
 # Web front (vanilla, zero build) served as-is -- shipped as package data.
 WEB_DIR = Path(__file__).resolve().parent / "web"
+# The three.js point-cloud engine lives in projector now (shared across tools);
+# serve it straight from projector's install instead of a private copy.
+ENGINE_DIR = projector.web_engine_dir()
 
 
 def _encode_preview(arr, max_points: int) -> dict:
@@ -172,6 +176,7 @@ def create_app(
     def index() -> str:
         return index_html
 
+    app.mount("/src/engine", StaticFiles(directory=str(ENGINE_DIR)), name="engine")
     app.mount("/", StaticFiles(directory=WEB_DIR, html=True), name="web")
     return app
 

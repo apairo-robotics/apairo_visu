@@ -27,9 +27,18 @@ visu = "apairo_visu.__main__:main"
 rerun = "apairo_visu.rerun.cli:main"
 
 [project.optional-dependencies]
-studio = ["fastapi", "uvicorn[standard]"]
+studio = [
+    "fastapi",
+    "uvicorn[standard]",
+    "projector",
+]
 rerun = ["rerun-sdk"]
 dev = ["pytest", "httpx"]
+
+# projector (the shared engine) is co-developed locally in ~/dev; resolve the
+# studio dependency from the sibling checkout (editable) rather than an index.
+[tool.uv.sources]
+projector = { path = "../projector", editable = true }
 
 [tool.setuptools.packages.find]
 where = ["."]
@@ -41,7 +50,6 @@ apairo_visu = [
     "studio/web/*.html",
     "studio/web/*.css",
     "studio/web/src/*.js",
-    "studio/web/src/engine/*.js",
     "studio/web/vendor/three/*.js",
     "studio/web/vendor/three/addons/controls/*.js",
 ]
