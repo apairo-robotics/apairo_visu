@@ -1,6 +1,7 @@
-# apairo-rr
+# Rerun backend (`apairo_visu.rerun`)
 
-[Rerun](https://rerun.io) visualisation layer for [apairo](../apairo) datasets.
+The [Rerun](https://rerun.io) visualisation backend of
+[apairo_visu](../../README.md), for [apairo](https://github.com/apairo-robotics/apairo) datasets.
 
 Logs LiDAR point clouds, semantic labels, robot trajectories, and **camera / image channels** to the Rerun viewer.  Supports multiple side-by-side pipelines, image channels updating along the timeline, sequence-aware navigation, and any `apairo` dataset (RELLIS-3D, SemanticKITTI, GOOSE, TartanKitti…).
 
@@ -8,11 +9,13 @@ Logs LiDAR point clouds, semantic labels, robot trajectories, and **camera / ima
 
 ## Installation
 
+Ships with `apairo_visu` behind the `rerun` extra (pulls in `rerun-sdk`):
+
 ```bash
-pip install -e .
+pip install "apairo-visu[rerun]"     # or, from a checkout: pip install -e ".[rerun]"
 ```
 
-Requires `apairo` and `apairo_preprocess` (resolved from local paths in `pyproject.toml`).
+Some examples also use `apairo_transform` / `apairo_preprocess`; install those to run them.
 
 ---
 
@@ -85,14 +88,14 @@ just counts interleaved events.
 
 ```python
 import apairo
-import apairo_rr
-from apairo_rr import Pipeline
+import apairo_visu.rerun
+from apairo_visu.rerun import Pipeline
 
 ds = apairo.Rellis3DDataset("/data/RELLIS", keys=["lidar", "labels"])
 
-apairo_rr.view(
+apairo_visu.rerun.view(
     ds,
-    label_cfgs=[apairo_rr.load_label_config("rellis")],
+    label_cfgs=[apairo_visu.rerun.load_label_config("rellis")],
     pipelines=[Pipeline("Semantic GT")],
 )
 ```
@@ -138,9 +141,9 @@ A 2D image channel to display beside the point clouds, updating per frame.  Pass
 plain channel-key strings or `ImageChannel` instances to `view(images=...)`:
 
 ```python
-from apairo_rr import ImageChannel, colorize
+from apairo_visu.rerun import ImageChannel, colorize
 
-apairo_rr.view(
+apairo_visu.rerun.view(
     ds,
     pipelines=[Pipeline("LiDAR", point_key="velodyne_0", label_key=None)],
     images=[
@@ -155,16 +158,16 @@ apairo_rr.view(
 RGB `img` channels are logged directly; use `colormap=` with `colorize()` to turn
 a single-channel map (depth, height, cost) into a colour image.  A channel
 missing from a frame keeps its last value on screen, so async sensors stay in
-sync.  See `examples/view_image_channels.py`.
+sync.  See `examples/rerun/view_image_channels.py`.
 
 ### `load_label_config(name)`
 
 Load a built-in label config by name.
 
 ```python
-cfg = apairo_rr.load_label_config("rellis")          # RELLIS-3D (20 classes)
-cfg = apairo_rr.load_label_config("semantic_kitti")  # SemanticKITTI (28 classes)
-cfg = apairo_rr.load_label_config("goose")           # GOOSE (64 classes)
+cfg = apairo_visu.rerun.load_label_config("rellis")          # RELLIS-3D (20 classes)
+cfg = apairo_visu.rerun.load_label_config("semantic_kitti")  # SemanticKITTI (28 classes)
+cfg = apairo_visu.rerun.load_label_config("goose")           # GOOSE (64 classes)
 ```
 
 Returns a dict with `color_map` and `semantic_map` keys, compatible with `view(label_cfgs=...)`.
@@ -177,13 +180,13 @@ Returns a dict with `color_map` and `semantic_map` keys, compatible with `view(l
 
 ```bash
 # All sequences
-python examples/view_rellis_traversability.py --root ~/data/rellis
+python examples/rerun/view_rellis_traversability.py --root ~/data/rellis
 
 # Single sequence, every 5th frame
-python examples/view_rellis_traversability.py --sequence 00000 --every 5
+python examples/rerun/view_rellis_traversability.py --sequence 00000 --every 5
 
 # Custom robot radius for trajectory-based traversability
-python examples/view_rellis_traversability.py --sequence 00001 --radius 0.8
+python examples/rerun/view_rellis_traversability.py --sequence 00001 --radius 0.8
 ```
 
 **CLI options**

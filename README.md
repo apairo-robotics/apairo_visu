@@ -2,7 +2,7 @@
 
 Interactive 3D LiDAR visualisation for [apairo](../apairo) datasets.
 
-`apairo_visu` extends apairo with an Open3D-based viewer that works natively with any `AbstractDataset`. Features:
+`apairo_visu` extends apairo with interactive viewers that work natively with any `AbstractDataset`: a built-in Open3D window (default) and an optional [Rerun](https://rerun.io) backend (`apairo_visu.rerun`). Features:
 
 - Semantic label colouring, height (viridis), and intensity display modes
 - Per-class filter and distribution panel
@@ -82,6 +82,38 @@ Factory-made closures are labelled with the factory's name.
 Limitation: `.cache()` materialises its parent and drops the reference, so the
 chain upstream of a cached dataset cannot be recovered -- call
 `graph.describe()` **before** `.cache()` if you need the full graph.
+
+## Rerun backend (optional)
+
+Besides the Open3D window, `apairo_visu.rerun` logs any apairo dataset to the
+[Rerun](https://rerun.io) viewer: one 3D view per LiDAR channel, one 2D view per
+camera channel, all scrubbing together on a shared timeline. It handles semantic
+labels, trajectory overlays, image channels, and async multi-rate rigs (each
+sensor ticks at its own rate).
+
+```bash
+pip install -e ".[rerun]"
+```
+
+```python
+import apairo
+import apairo_visu.rerun as vr
+
+ds = apairo.Rellis3DDataset("/data/RELLIS", keys=["lidar", "labels"])
+vr.view(ds, label_cfgs=[vr.load_label_config("rellis")])
+```
+
+Or straight from the shell -- installing the package registers `rerun` as an
+ecosystem subcommand of the core `apairo` CLI:
+
+```bash
+apairo rerun /data/ds --lidar ouster_points --camera zed_rgb
+apairo rerun /data/ds --lidar velodyne_0 --labels labels --label-config semantic_kitti
+apairo rerun /data/ds                       # discover the channel names
+```
+
+Full flag reference, image channels, pose/height colouring and async handling:
+see the [Rerun backend guide](apairo_visu/rerun/README.md) and `examples/rerun/`.
 
 ## Studio (interactive pipeline environment)
 
@@ -210,7 +242,7 @@ views (see the studio plan).
 
 ## CLI
 
-Installing the package registers two ecosystem subcommands on the core
+Installing the package registers three ecosystem subcommands on the core
 `apairo` command (entry-point group `apairo.cli_plugins`):
 
 ```bash
@@ -221,6 +253,9 @@ apairo studio /data/barakuda_kitti --sync lidar
 apairo visu --dataset goose --root /data/goose --split val
 apairo visu --dataset rellis --root /data/rellis
 apairo visu --dataset semantic_kitti --root /data/kitti --split train --idx 50
+
+# Rerun replay of any dataset directory (see the Rerun backend section)
+apairo rerun /data/barakuda_kitti --lidar lidar --camera camera
 ```
 
 `python -m apairo_visu` remains equivalent to `apairo visu`.
@@ -245,6 +280,7 @@ apairo_visu/
   graph.py      pipeline structure graph (introspection -> GraphSpec + DOT/Mermaid)
   graph_render.py  built-in layout + styled SVG / interactive HTML renderer
   studio/       interactive pipeline environment (FastAPI + vanilla front)
+  rerun/        optional Rerun backend: view() + `apairo rerun` CLI (own colormaps/pipeline)
   colors.py     colour maps (semantic / intensity / height)
   geometry.py   pure-numpy helpers (hover projection, trajectory) + Open3D builders
   poses.py      load_poses: pose channel -> 4x4 matrices
@@ -254,12 +290,14 @@ apairo_visu/
 
 The light layer (`config`, `pipeline`, `graph`, `colors`, `geometry`, `poses`) imports
 only numpy/PyYAML, so `import apairo_visu` works headless; Open3D is pulled in
-lazily the first time `LidarViewer` is used.
+lazily the first time `LidarViewer` is used, and `rerun-sdk` only when you import
+`apairo_visu.rerun`.
 
 ## Documentation
 
 - [Getting started](docs/getting_started.md)
 - [LidarViewer API](docs/viewer.md)
+- [Rerun backend](apairo_visu/rerun/README.md)
 - [Label configurations](docs/label_configs.md)
 - [Synchronising async datasets](docs/sync.md)
 - [Examples](docs/examples.md)
