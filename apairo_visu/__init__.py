@@ -1,8 +1,8 @@
 """apairo_visu -- interactive 3-D LiDAR visualisation for apairo datasets.
 
 The light layer (``Pipeline``, ``ViewConfig``, ``load_label_config``,
-``load_poses``) imports only numpy / PyYAML, so it can be used in a headless
-context.  :class:`LidarViewer` pulls in Open3D and is therefore loaded lazily,
+``load_poses``, ``graph``) imports only numpy / PyYAML, so it can be used in a
+headless context.  :class:`LidarViewer` pulls in Open3D and is therefore loaded lazily,
 the first time it is accessed::
 
     import apairo_visu                      # no Open3D import yet
@@ -12,6 +12,7 @@ the first time it is accessed::
 
 from __future__ import annotations
 
+from . import graph
 from .config import BUILTIN_CONFIGS, ViewConfig, load_label_config
 from .pipeline import Pipeline
 from .poses import load_poses, pose_to_matrix
@@ -20,6 +21,7 @@ __all__ = [
     "LidarViewer",
     "ViewConfig",
     "Pipeline",
+    "graph",
     "load_label_config",
     "load_poses",
     "pose_to_matrix",

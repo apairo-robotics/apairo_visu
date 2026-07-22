@@ -175,14 +175,24 @@ apairo_visu.LidarViewer.launch(ds, label_cfg=cfg, pipelines=[
 
 ```bash
 # GOOSE-3D
-python -m apairo_visu --dataset goose --root /data/goose --split val
+apairo visu --dataset goose --root /data/goose --split val
 
 # SemanticKITTI, starting at frame 200
-python -m apairo_visu --dataset semantic_kitti --root /data/kitti --idx 200
+apairo visu --dataset semantic_kitti --root /data/kitti --idx 200
 
 # Custom label config
-python -m apairo_visu --dataset rellis --root /data/rellis --cfg my_colors.yaml
+apairo visu --dataset rellis --root /data/rellis --cfg my_colors.yaml
 
 # No labels (intensity/height only)
-python -m apairo_visu --dataset goose --root /data/goose --no-labels
+apairo visu --dataset goose --root /data/goose --no-labels
+```
+
+`python -m apairo_visu` is equivalent to `apairo visu`.
+
+The interactive studio has its own subcommand -- point it at any dataset
+directory (see the Studio section of the README):
+
+```bash
+apairo studio /data/barakuda_kitti
+apairo studio /data/barakuda_kitti --sync lidar --tolerance 0.05
 ```

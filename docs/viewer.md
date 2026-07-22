@@ -106,7 +106,7 @@ The selected mode is applied to **all viewports simultaneously**.
 │  [Semantic ▼]    │                                      │
 │                  │                                      │
 │  OVERLAYS        │                                      │
-│  ☑ Trajectory[J] │                                      │
+│  [x] Trajectory[J] │                                      │
 │                  │                                      │
 │  CLASS DISTRIB.  │                                      │
 │  asphalt  34.2%  │                                      │
@@ -131,9 +131,9 @@ The selected mode is applied to **all viewports simultaneously**.
 │  [Semantic ▼]    │                 │                 │                 │
 │                  │                 │                 │                 │
 │  ACTIVE PIPELINES│                 │                 │                 │
-│  ☑ Raw           │                 │                 │                 │
-│  ☑ Preprocessed  └─────────────────┴─────────────────┴─────────────────┘
-│  ☑ Model A
+│  [x] Raw           │                 │                 │                 │
+│  [x] Preprocessed  └─────────────────┴─────────────────┴─────────────────┘
+│  [x] Model A
 │
 │  PIPELINES
 │  Raw: 0 ms

@@ -19,15 +19,30 @@ dependencies = [
     "apairo @ git+https://github.com/apairo-robotics/apairo.git",
 ]
 
+# Ecosystem subcommands discovered by the core `apairo` CLI
+# (see apairo.cli_plugins): `apairo studio <dir>`, `apairo visu ...`.
+[project.entry-points."apairo.cli_plugins"]
+studio = "apairo_visu.studio.cli:main"
+visu = "apairo_visu.__main__:main"
+
 [project.optional-dependencies]
-dev = ["pytest"]
+studio = ["fastapi", "uvicorn[standard]"]
+dev = ["pytest", "httpx"]
 
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["apairo_visu*"]
 
 [tool.setuptools.package-data]
-apairo_visu = ["configs/*.yaml"]
+apairo_visu = [
+    "configs/*.yaml",
+    "studio/web/*.html",
+    "studio/web/*.css",
+    "studio/web/src/*.js",
+    "studio/web/src/engine/*.js",
+    "studio/web/vendor/three/*.js",
+    "studio/web/vendor/three/addons/controls/*.js",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["test"]

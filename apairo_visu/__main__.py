@@ -33,15 +33,17 @@ def _load_dataset(name: str, root: str, split: str | None, keys: list[str]):
     return cls(root, **kwargs)
 
 
-def main() -> None:
-    p = argparse.ArgumentParser(description="apairo_visu -- LiDAR dataset viewer")
+def main(argv: list[str] | None = None) -> None:
+    p = argparse.ArgumentParser(
+        prog="apairo visu", description="apairo_visu -- LiDAR dataset viewer"
+    )
     p.add_argument("--dataset", required=True, help=f"Dataset name ({' | '.join(_DATASETS)})")
     p.add_argument("--root", required=True, help="Path to dataset root directory")
     p.add_argument("--split", default=None, help="Dataset split (train | val | test)")
     p.add_argument("--cfg", default=None, help="Path to a custom label YAML config (default: built-in)")
     p.add_argument("--idx", type=int, default=0, help="Starting frame index")
     p.add_argument("--no-labels", action="store_true", help="Disable label loading")
-    args = p.parse_args()
+    args = p.parse_args(argv)
 
     if args.dataset not in _DATASETS:
         raise SystemExit(f"Unknown dataset '{args.dataset}'. Known: {sorted(_DATASETS)}")
