@@ -2,6 +2,11 @@
 
 Interactive 3D LiDAR visualisation for [apairo](../apairo) datasets.
 
+> **Branches — the studio viewer runs on [projector](https://github.com/augustin-bresset/projector).**
+> Its 3D engine comes from the shared **projector** package rather than a private copy — this is
+> where everything is heading. A **`standalone`** branch keeps the earlier self-contained version
+> with **no dependency on projector**; it is deprecated, but kept so you can still try it.
+
 `apairo_visu` extends apairo with interactive viewers that work natively with any `AbstractDataset`: a built-in Open3D window (default) and an optional [Rerun](https://rerun.io) backend (`apairo_visu.rerun`). Features:
 
 - Semantic label colouring, height (viridis), and intensity display modes
