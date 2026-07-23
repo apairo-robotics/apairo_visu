@@ -16,7 +16,7 @@ dependencies = [
     "open3d",
     "PyYAML",
 
-    "apairo @ git+https://github.com/apairo-robotics/apairo.git",
+    "apairo>=0.6",
 ]
 
 # Ecosystem subcommands discovered by the core `apairo` CLI
