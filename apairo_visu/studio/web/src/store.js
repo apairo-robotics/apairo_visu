@@ -187,6 +187,7 @@ export function sampleOne(nodeId, index, channel) {
       return {
         index,
         timestamp: payload.timestamp ?? null,
+        frame: payload.frame ?? null,
         arr: encoded === undefined || encoded.repr !== undefined
           ? null
           : decodeArray(encoded),

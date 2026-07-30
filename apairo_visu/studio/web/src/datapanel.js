@@ -284,24 +284,34 @@ export function dataSpec(binding) {
       sizeInput.step = "0.5";
       sizeInput.value = localStorage.getItem("studio.ptsize") || "2";
       sizeInput.title = "Point size (px)";
-      // Per-panel frame: type an index to diverge from the global slider.
-      // Moving the global slider resynchronizes every panel EXCEPT the
-      // locked ones -- lock to compare two moments side by side.
+      // This panel's frame, counted in ITS channel's own frames rather than
+      // in the interleaved global index: a lidar panel sits at "lidar
+      // 000850", and 000850 is the number a label file is named after. The
+      // global index is an artefact of how the events happen to be merged
+      // -- it even shifts when a label is written to another channel --
+      // so nobody can act on it. Type a frame and press Enter to seek;
+      // where that seek lands is the sync checkbox's business.
       const frameInput = el("input", "opt-input frame-input");
-      frameInput.type = "number";
-      frameInput.min = "0";
-      frameInput.max = String(Math.max(0, (len ?? 1) - 1));
-      frameInput.title = "This panel's frame (lock to survive global slider moves)";
-      const lockBtn = el("button", "tbtn");
-      let local = null;   // panel-specific frame index, null = global
-      let locked = false;
-      const paintLock = () => {
-        lockBtn.textContent = locked ? "locked" : "follow";
-        lockBtn.title = locked
-          ? "Locked on its own frame — the global slider does not move this panel"
-          : "Follows the global slider — set a frame and lock to keep it";
-      };
-      paintLock();
+      frameInput.type = "text";
+      frameInput.title =
+        "This panel's frame, in this channel's own frames (the file stem, "
+        + "e.g. 000850). Type one and press Enter to seek.";
+      // "sync": this panel and the global timeline drive each OTHER. Ticked
+      // (the default), seeking here moves the global frame -- and with it
+      // the topbar slider and every other synced panel -- and a global move
+      // brings this panel along. Unticked, the panel is an island: seek it
+      // freely without disturbing anything, then tick sync again to bring
+      // everyone onto the frame you found.
+      const syncBox = el("input");
+      syncBox.type = "checkbox";
+      syncBox.checked = true;
+      const syncLabel = el("label", "sync-toggle on", "sync");
+      syncLabel.prepend(syncBox);
+      syncLabel.title =
+        "Synced: seeking here moves the global timeline and every other "
+        + "synced panel, and follows it back. Unticked: this panel alone moves.";
+      let local = null;   // panel-specific frame index, null = follows global
+      const synced = () => syncBox.checked;
       // Designates THIS data (node+channel+current sample) as the target
       // a catalog try applies to.
       const tryBtn = el("button", "tbtn", "try");
@@ -313,15 +323,66 @@ export function dataSpec(binding) {
         });
       });
       panel.controls.append(
-        modeSel, colorSel, bgrBtn, sizeInput, frameInput, lockBtn, tryBtn);
+        modeSel, colorSel, bgrBtn, sizeInput, frameInput, syncLabel, tryBtn);
 
       let arr = null;
       // Channels of the current sample: the color select offers per-point
       // siblings (labels) and cloudColorValues resolves them.
       let chans = null;
-      // BEV zoom state: null = auto-fit. Survives frame changes so a zoom
-      // holds while scrubbing; double-click resets it.
+
+      // This channel's own timeline: {indices, stems} over the global frame
+      // axis, or false for a synchronous dataset (every frame carries every
+      // channel, so the global index already IS the channel's frame) and for
+      // transform nodes, which have no event timeline. Fetched once, cached
+      // by the store.
+      let track = null;
+      const loadTrack = async () => {
+        if (track !== null) return track;
+        try {
+          const t = await store.channelFrames(nodeId, channel);
+          track = t.indices.length ? t : false;
+        } catch {
+          track = false;
+        }
+        return track;
+      };
+      // Position of the channel event at (or before) a global frame; -1 when
+      // the channel has no event that early.
+      const posOf = (indices, frame) => {
+        let lo = 0, hi = indices.length - 1, best = -1;
+        while (lo <= hi) {
+          const m = (lo + hi) >> 1;
+          if (indices[m] <= frame) { best = m; lo = m + 1; } else hi = m - 1;
+        }
+        return best;
+      };
+      // How this panel names a global frame: the file stem when the dataset
+      // has one, the channel-relative row otherwise, null when the frame is
+      // not one of this channel's events at all.
+      const nameOf = (globalIndex) => {
+        if (!track) return null;
+        const k = posOf(track.indices, globalIndex);
+        if (k < 0 || track.indices[k] !== globalIndex) return null;
+        return track.stems ? track.stems[k] : String(k);
+      };
+      // The inverse, for what the user types: a stem (000850, or 850 without
+      // the padding nobody types) and, failing that, a plain channel row.
+      const seek = (t, text) => {
+        const numeric = /^\d+$/.test(text);
+        if (t.stems) {
+          const k = t.stems.findIndex((s) => s === text ||
+            (numeric && /^\d+$/.test(s) && Number(s) === Number(text)));
+          if (k >= 0) return k;
+        }
+        if (numeric && Number(text) < t.indices.length) return Number(text);
+        return -1;
+      };
+      // Zoom state per 2-D stage: null = auto-fit. Survives frame changes so
+      // a zoom holds while scrubbing (watch one bush across a sequence);
+      // double-click resets it. The BEV works in world metres, the image /
+      // raster stage in source pixels, so they cannot share one state.
       let bevView = null;
+      let imgView = null;
 
       const colorSpec = () => {
         const fallback = String(Math.min(2, arr.shape[1] - 1));
@@ -552,27 +613,32 @@ export function dataSpec(binding) {
       const refresh = async () => {
         const mySeq = ++refreshSeq;
         try {
+          await loadTrack();
           const sample = await store.sampleAt(nodeId, len, local);
           let held = null;
           if ((sample.channels[channel] ?? null) === null) {
             held = await holdLast(sample);
           }
           if (mySeq !== refreshSeq) return;
-          frameInput.value = String(sample.index);
           arr = sample.channels[channel] ?? held?.arr ?? null;
           chans = held ? { ...sample.channels, [channel]: held.arr } : sample.channels;
-          // Frame provenance: the sequence this global index falls in, and
-          // the event's channel-relative row (async timelines) -- `frame
-          // 503961 (seq_b · camera 2)` reads as "camera frame 2 of seq_b".
-          const ref = sample.frame;
-          const rowInfo = ref?.channel != null && ref?.row != null
-            ? ` · ${ref.channel} ${ref.row}` : "";
-          const prov = ref?.sequence ? ` (${ref.sequence}${rowInfo})` : "";
+          // The data on screen is the held frame's when the channel is absent
+          // here, so name THAT one -- the box must always read as the frame
+          // you are looking at, never the one you merely scrolled past.
+          const shown = held ? held.index : sample.index;
+          const name = nameOf(shown);
+          frameInput.value = name ?? String(shown);
+          // The panel's own channel leads (`lidar 000850`); the global index
+          // and the sequence follow as context, because the interleaved
+          // index is the one thing nobody can act on.
+          const head = name != null
+            ? `${channel} ${name} · frame ${shown}` : `frame ${shown}`;
+          const seq = sample.frame?.sequence ? ` · ${sample.frame.sequence}` : "";
           meta.textContent = arr && arr.shape
-            ? `frame ${sample.index}${prov} · ${arr.dtype} · ${arr.shape.join(" × ")}` +
+            ? `${head}${seq} · ${arr.dtype} · ${arr.shape.join(" × ")}` +
               (arr.fullRows ? ` (showing ${arr.shape[0]} of ${arr.fullRows})` : "") +
               (held ? held.note : "")
-            : `frame ${sample.index}${prov} · channel absent`;
+            : `${head}${seq} · channel absent`;
           fillColorOptions();
           drawAs(currentKind());
         } catch (err) {
@@ -594,27 +660,81 @@ export function dataSpec(binding) {
         localStorage.setItem("studio.ptsize", sizeInput.value);
         drawAs(currentKind());
       });
-      frameInput.addEventListener("change", () => {
-        local = Math.max(0, Math.min(Number(frameInput.value) || 0, (len ?? 1) - 1));
-        frameInput.value = String(local);
-        refresh();
-      });
-      lockBtn.addEventListener("click", () => {
-        locked = !locked;
-        if (locked && local === null) {
-          local = Math.max(0, Math.min(store.getFrame(), (len ?? 1) - 1));
-        }
-        if (!locked) {
-          local = null; // unlocking resynchronizes on the global frame
+      // Land on a global frame index: shared when synced (the topbar and
+      // every other synced panel move with it), private otherwise.
+      const goTo = (target) => {
+        if (!synced()) {
+          local = target;
           refresh();
+          return;
         }
-        paintLock();
+        local = null;
+        // setFrame is a no-op when the frame is already there, and then
+        // nothing would repaint this panel -- refresh it ourselves.
+        if (target === store.getFrame()) refresh();
+        else store.setFrame(target);
+      };
+
+      // Seek this panel to one of ITS channel's frames. `change` alone would
+      // ignore a re-typed identical value and only fire on blur for some
+      // inputs, and "I pressed Enter and nothing moved" is exactly the bug
+      // to avoid here -- so Enter seeks explicitly too.
+      const seekTyped = async () => {
+        const text = frameInput.value.trim();
+        const t = await loadTrack();
+        if (!t) { // synchronous dataset: the global index is the frame
+          goTo(Math.max(0, Math.min(Number(text) || 0, (len ?? 1) - 1)));
+          return;
+        }
+        const k = seek(t, text);
+        if (k < 0) { refresh(); return; } // unknown: restore what is shown
+        goTo(t.indices[k]);
+      };
+      frameInput.addEventListener("change", seekTyped);
+      frameInput.addEventListener("keydown", (e) => {
+        if (e.key !== "Enter") return;
+        e.preventDefault();
+        // Hand the keyboard back: a focused text input swallows the arrows,
+        // and stepping on from the frame you just typed is the whole point.
+        frameInput.blur();
+        seekTyped();
       });
 
-      // The global slider resynchronizes every panel except the locked
-      // ones (a typed-in frame diverges only until the next global move).
+      // Step this panel by *delta* of ITS channel's frames. Used by the
+      // arrow keys when this panel holds the keys and is NOT synced -- a
+      // synced panel routes its arrows through the global timeline instead.
+      const seekBy = (delta) => {
+        const at = local ?? store.getFrame();
+        if (!track) {
+          goTo(Math.max(0, Math.min(at + delta, (len ?? 1) - 1)));
+          return;
+        }
+        const base = posOf(track.indices, at);
+        const off = delta < 0 && track.indices[base] !== at ? 1 : 0;
+        const next = Math.max(
+          0, Math.min(base + delta + off, track.indices.length - 1));
+        goTo(track.indices[next]);
+      };
+
+      syncBox.addEventListener("change", () => {
+        syncLabel.classList.toggle("on", synced());
+        if (!synced()) {
+          // Unticking must never move the picture: freeze where it stands.
+          if (local === null) {
+            local = Math.max(0, Math.min(store.getFrame(), (len ?? 1) - 1));
+          }
+          return;
+        }
+        // Re-synced: the frame this panel wandered to becomes everyone's.
+        const own = local;
+        local = null;
+        if (own === null || own === store.getFrame()) refresh();
+        else store.setFrame(own);
+      });
+      // A global move brings every synced panel along; an unsynced one stays
+      // on the frame it was left at.
       const offFrame = store.onFrame(() => {
-        if (locked) return;
+        if (!synced()) return;
         local = null;
         refresh();
       });

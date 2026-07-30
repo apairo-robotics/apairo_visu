@@ -54,6 +54,7 @@ function initSlider() {
   const slider = $("#frame-slider");
   const counter = $("#frame-counter");
   const rangeClear = $("#range-clear");
+  const gotoInput = $("#frame-goto");
   // Active bounds: the whole dataset, or the sequence range when one is
   // selected in the inspector.
   const bounds = () => {
@@ -67,24 +68,45 @@ function initSlider() {
   };
   // Positions the slider walks: the per-channel track when one is chosen
   // (intersected with the sequence range), else the plain frame range.
+  // Cached — the intersection is O(track) and paint() runs on every scrub,
+  // while the inputs only change when the track or the range does.
+  let posCache = null; // {indices, stems|null} or null (no track)
   const positions = () => {
+    if (posCache) return posCache;
     const t = store.getTrack();
     if (!t) return null;
     const r = store.getRange();
-    return r ? t.indices.filter((i) => i >= r.start && i < r.stop) : t.indices;
+    if (!r) {
+      posCache = { indices: t.indices, stems: t.stems || null };
+      return posCache;
+    }
+    const indices = [];
+    const stems = t.stems ? [] : null;
+    for (let k = 0; k < t.indices.length; k++) {
+      const i = t.indices[k];
+      if (i < r.start || i >= r.stop) continue;
+      indices.push(i);
+      if (stems) stems.push(t.stems[k]);
+    }
+    posCache = { indices, stems };
+    return posCache;
+  };
+  // Channel mode reads as "lidar 000850" — the on-disk file name leads,
+  // because that is what a label file is called; the channel-relative
+  // position and the global timeline index are secondary context.
+  const trackText = (p, pos) => {
+    const stem = p.stems ? ` ${p.stems[pos]}` : "";
+    return `${store.getTrack().channel}${stem} · ${pos + 1}/${p.indices.length}` +
+      ` · frame ${p.indices[pos]}${label()}`;
   };
   const paint = () => {
-    const idxs = positions();
-    if (idxs && idxs.length) {
-      const pos = floorPos(idxs, store.getFrame());
+    const p = positions();
+    if (p && p.indices.length) {
+      const pos = floorPos(p.indices, store.getFrame());
       slider.min = 0;
-      slider.max = idxs.length - 1;
+      slider.max = p.indices.length - 1;
       slider.value = pos;
-      // Channel mode: the channel-relative index leads; the global
-      // timeline index is secondary context.
-      counter.textContent =
-        `${store.getTrack().channel} ${pos + 1}/${idxs.length}` +
-        ` · frame ${idxs[pos]}${label()}`;
+      counter.textContent = trackText(p, pos);
     } else {
       const [lo, hi] = bounds();
       slider.min = lo;
@@ -96,11 +118,10 @@ function initSlider() {
   };
   let pending = null;
   slider.addEventListener("input", () => {
-    const idxs = positions();
+    const p = positions();
     const value = Number(slider.value);
-    counter.textContent = idxs && idxs.length
-      ? `${store.getTrack().channel} ${value + 1}/${idxs.length}` +
-        ` · frame ${idxs[value]}${label()}`
+    counter.textContent = p && p.indices.length
+      ? trackText(p, Math.min(value, p.indices.length - 1))
       : `${value} / ${bounds()[1]}${label()}`;
     // Trailing throttle: at most one store update per 60ms while scrubbing.
     if (pending) return;
@@ -150,7 +171,7 @@ function initTrackSelect() {
   sel.addEventListener("change", async () => {
     if (!sel.value || !nodeId) { store.setTrack(null); return; }
     try {
-      const { indices } = await store.channelFrames(nodeId, sel.value);
+      const { indices, stems } = await store.channelFrames(nodeId, sel.value);
       if (!indices.length) {
         $("#status").textContent =
           `${sel.value}: every frame carries it (synchronous) — nothing to filter`;
@@ -158,7 +179,7 @@ function initTrackSelect() {
         store.setTrack(null);
         return;
       }
-      store.setTrack({ nodeId, channel: sel.value, indices });
+      store.setTrack({ nodeId, channel: sel.value, indices, stems: stems || null });
     } catch (err) {
       $("#status").textContent = String(err);
       sel.value = "";
