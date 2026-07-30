@@ -239,6 +239,9 @@ table.kv th { color: var(--muted); font-weight: 500; white-space: nowrap; }
 table.kv tr:last-child td, table.kv tr:last-child th { border-bottom: none; }
 td.num { font-variant-numeric: tabular-nums; }
 
+/* A plot whose selection no longer matches what is drawn. */
+.tbtn.primed { color: var(--accent); }
+
 pre.doc {
   font: 12px/1.5 var(--mono); color: var(--muted); white-space: pre-wrap;
   background: var(--canvas); border: 1px solid var(--line); border-radius: 5px;

@@ -170,7 +170,7 @@ export function inspectorSpec(openData, openSeries) {
             const plot = el("button", "tbtn", "plot");
             plot.title = `Plot ${ch.key} across frames (series panel)`;
             plot.addEventListener("click", () =>
-              openSeries(nodeId, detail.label, ch.key, detail.len));
+              openSeries(nodeId, detail.label, ch.key, detail.len, ch.shape));
             const designate = el("button", "tbtn", "try");
             designate.title = `Designate ${ch.key} as the catalog try target`;
             designate.addEventListener("click", () => store.setTarget({

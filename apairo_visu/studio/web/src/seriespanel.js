@@ -46,8 +46,38 @@ const finiteBounds = (arrays) => {
   return [lo, hi];
 };
 
+// What a channel's shape offers to plot, as select options. A 1-D frame
+// indexes directly (imu component 3), a small matrix indexes flat (a 4x4
+// pose's translation is 3/7/11), a per-point cloud reduces one column to its
+// finite mean. Named where the meaning is conventional, so the choice is a
+// pick from a list rather than a number to guess.
+export function componentOptions(shape) {
+  if (!shape || !shape.length) return null;
+  if (shape.length === 1) {
+    return [...Array(Math.min(shape[0], 64)).keys()]
+      .map((c) => [String(c), `c${c}`]);
+  }
+  if (shape.length === 2 && shape[0] <= 16 && shape[0] * shape[1] <= 64) {
+    const opts = [];
+    for (let r = 0; r < shape[0]; r++) {
+      for (let c = 0; c < shape[1]; c++) {
+        const flat = r * shape[1] + c;
+        opts.push([String(flat), `c${flat} (row ${r}, col ${c})`]);
+      }
+    }
+    return opts;
+  }
+  if (shape.length === 2) {
+    // Per-point: columns are xyz then whatever the sensor adds.
+    const named = ["x", "y", "z"];
+    return [...Array(Math.min(shape[1], 64)).keys()]
+      .map((c) => [String(c), named[c] ? `col ${c} (${named[c]})` : `col ${c}`]);
+  }
+  return null;
+}
+
 export function seriesSpec(binding) {
-  const { nodeId, nodeLabel, channel, len } = binding;
+  const { nodeId, nodeLabel, channel, len, shape } = binding;
   return {
     key: `series:${nodeId}:${channel}`,
     tag: "SERIES",
@@ -66,14 +96,23 @@ export function seriesSpec(binding) {
 
       const modeSel = el("select", "chan-color");
       fillSelect(modeSel, [["signal", "signal"], ["path", "path (x/y)"]]);
-      const colX = el("input", "opt-input frame-input");
-      colX.type = "number";
-      colX.value = "0";
-      colX.title = "component (1-D: index, matrix: flat index, cloud: column)";
-      const colY = el("input", "opt-input frame-input");
-      colY.type = "number";
-      colY.value = "1";
-      colY.title = "path only: the component plotted on y";
+      // Pick the component from a list when the channel's shape says what is
+      // in there; fall back to a raw index for shapes we cannot name.
+      const options = componentOptions(shape);
+      const makeCol = (value, title) => {
+        const node = options
+          ? el("select", "chan-color")
+          : el("input", "opt-input frame-input");
+        if (options) fillSelect(node, options);
+        else node.type = "number";
+        node.value = value;
+        node.title = title;
+        return node;
+      };
+      const colX = makeCol("0",
+        "component on y (1-D: index, matrix: flat index, cloud: column)");
+      const colY = makeCol(options && options.length > 1 ? options[1][0] : "1",
+        "path only: the component plotted on y");
       const winInput = el("input", "opt-input frame-input");
       winInput.type = "number";
       winInput.min = "0";
@@ -81,7 +120,12 @@ export function seriesSpec(binding) {
       winInput.title = "rolling window in frames (0 = raw signal)";
       const statSel = el("select", "chan-color");
       fillSelect(statSel, [["mean", "rolling mean"], ["variance", "rolling variance"]]);
-      panel.controls.append(modeSel, colX, colY, winInput, statSel);
+      // Plotting reduces every frame of the range server-side, so it runs
+      // when asked, not the moment the panel opens: pick what you want out
+      // of the channel first, then press plot.
+      const plotBtn = el("button", "tbtn", "plot");
+      plotBtn.title = "Compute and draw the selected component over the range";
+      panel.controls.append(modeSel, colX, colY, winInput, statSel, plotBtn);
 
       let data = null; // {start, stop, truncated, cols:{"0":[...]}}
       let seq = 0;
@@ -91,11 +135,24 @@ export function seriesSpec(binding) {
         return r ? [r.start, r.stop] : [0, len ?? 1];
       };
 
+      // A selection that no longer matches what is drawn: say so instead of
+      // silently refetching, so a click on a 290k-frame channel is always
+      // the user's decision.
+      let stale = true;
       const paintControls = () => {
         const path = modeSel.value === "path";
         colY.hidden = !path;
         winInput.hidden = path;
         statSel.hidden = path || Number(winInput.value) <= 0;
+        plotBtn.classList.toggle("primed", stale);
+        plotBtn.textContent = stale && data ? "re-plot" : "plot";
+      };
+      const markStale = () => {
+        stale = true;
+        paintControls();
+        const [start, stop] = range();
+        meta.textContent = `${channel} @ ${nodeLabel} · ${stop - start} frames ` +
+          `in range — press plot`;
       };
 
       const draw = () => {
@@ -205,6 +262,8 @@ export function seriesSpec(binding) {
             `/api/node/${nodeId}/series/${encodeURIComponent(channel)}` +
             `?cols=${cols}&start=${start}&stop=${stop}`);
           if (mySeq !== seq) return;
+          stale = false;
+          paintControls();
           meta.textContent = `${channel} @ ${nodeLabel} · ${data.stop - data.start} frames`;
           draw();
         } catch (err) {
@@ -220,17 +279,19 @@ export function seriesSpec(binding) {
         store.setFrame(data.start + Math.max(0, Math.min(i, count - 1)));
       });
 
-      modeSel.addEventListener("change", () => { paintControls(); refetch(); });
-      colX.addEventListener("change", refetch);
-      colY.addEventListener("change", refetch);
+      // What needs the server marks the plot stale; what is pure client-side
+      // arithmetic on the values already fetched redraws straight away.
+      plotBtn.addEventListener("click", refetch);
+      modeSel.addEventListener("change", markStale);
+      colX.addEventListener("change", markStale);
+      colY.addEventListener("change", markStale);
       winInput.addEventListener("change", () => { paintControls(); draw(); });
       statSel.addEventListener("change", draw);
 
-      const offRange = store.onRange(refetch);
+      const offRange = store.onRange(markStale);
       const offFrame = store.onFrame(draw); // marker only: no refetch
       panel.onRemove = () => { offRange(); offFrame(); };
-      paintControls();
-      refetch();
+      markStale();
     },
   };
 }
