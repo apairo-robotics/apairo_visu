@@ -11,6 +11,7 @@ garbage).
 from __future__ import annotations
 
 import inspect
+import os
 from typing import Any
 
 import numpy as np
@@ -21,6 +22,7 @@ _PREVIEW_INDEX = 0  # sample used to derive the channel table
 _CHANNEL_SCAN_CAP = 512  # frames probed to locate channels absent at index 0
 _SERIES_CAP = 2000  # frames per series request (the front pages via start/stop)
 _TRACK_SCAN_CAP = 5_000_000  # frame_info fallback bound (vector path has none)
+_ENTRIES_CAP = 500  # rows per listing request -- each one costs an os.stat
 
 
 def _step_callable(step) -> Any:
@@ -67,6 +69,7 @@ class StudioRegistry:
         self._nodes: dict[str, Node] = {n.id: n for n in self.spec.nodes}
         self._channel_cache: dict[str, list[dict]] = {}
         self._track_cache: dict[tuple[str, str], dict] = {}
+        self._stems_cache: dict[str, np.ndarray | None] = {}
 
     # ------------------------------------------------------------- queries
 
@@ -175,18 +178,23 @@ class StudioRegistry:
             ts = _timestamp_of(sample)
             if ts is not None:
                 out["timestamp"] = ts
-            # Frame provenance (sequence / source channel / row) when the
-            # dataset can name it -- the front shows it next to the index.
+            # Frame provenance (sequence / source channel / row / on-disk
+            # stem) when the dataset can name it -- the front shows it next
+            # to the index. The stem is what the user labels by: it names the
+            # file (``000850.npy``), which the flat index never does.
             try:
                 ref = ds.frame_info(index)
+                stem = self._stem(ds, index)
                 # Base datasets return a ref with sequence=None -- only a
-                # named sequence is worth showing.
-                if getattr(ref, "sequence", None) is not None:
+                # named sequence (or a nameable file) is worth showing.
+                if getattr(ref, "sequence", None) is not None or stem is not None:
                     out["frame"] = {
-                        "sequence": ref.sequence,
+                        "sequence": getattr(ref, "sequence", None),
                         "channel": getattr(ref, "channel", None),
                         "row": getattr(ref, "row", None),
                     }
+                    if stem is not None:
+                        out["frame"]["stem"] = stem
             except Exception:
                 pass
             return out
@@ -267,6 +275,11 @@ class StudioRegistry:
         carries every channel, ``frame_info().channel is None``) yield an
         empty list -- the global slider already is their timeline. Dataset
         nodes only; ``None`` for unknown or transform nodes.
+
+        ``stems`` runs parallel to ``indices``: the on-disk filename stem of
+        each event (``"000850"``). That is the name a label file carries, so
+        the front can show it while scrubbing and jump straight to it --
+        a flat index alone cannot be matched back to a file.
         """
         node = self._nodes.get(node_id)
         ds = self.objects.get(node_id)
@@ -293,8 +306,205 @@ class StudioRegistry:
             except Exception:
                 indices, truncated = [], False
             result = {"indices": indices, "truncated": truncated}
+        stems = self._frame_stems(ds)
+        if stems is not None and result["indices"]:
+            try:
+                result["stems"] = [str(s) for s in stems[result["indices"]]]
+            except Exception:
+                pass
         self._track_cache[key] = result
         return result
+
+    def entries(
+        self,
+        node_id: str,
+        channel: str,
+        start: int = 0,
+        stop: int | None = None,
+        sequence: str | None = None,
+    ) -> dict | None:
+        """One row per frame of *channel*: where it is and what backs it.
+
+        The channel table says a channel exists and what one sample looks
+        like; this says what is actually *in* it -- row, sequence, on-disk
+        file and its size, timestamp, and the global frame index to seek to.
+        That is the view you need to answer "which frames do I still have to
+        label", which no single sample can show.
+
+        Paged over the channel's own timeline (``start``/``stop`` count
+        frames of the channel, not global indices), capped at
+        ``_ENTRIES_CAP`` per request because every row costs an ``os.stat``.
+        Optionally narrowed to one *sequence*. File and timestamp are
+        best-effort: a view or an exotic loader simply reports ``None`` for
+        them rather than failing the listing.
+        """
+        node = self._nodes.get(node_id)
+        ds = self.objects.get(node_id)
+        if node is None or node.kind != "dataset" or ds is None:
+            return None
+        track = self.frames(node_id, channel)
+        indices: list[int] = list(track["indices"]) if track else []
+        stems = (track or {}).get("stems")
+        # A synchronous dataset has no per-channel timeline: every frame
+        # carries the channel, so the listing is the whole frame axis.
+        if not indices:
+            try:
+                indices = list(range(len(ds)))
+            except Exception:
+                indices = []
+            stems = None
+        seq_ids = getattr(ds, "frame_sequence_ids", None)
+        seq_ids = None if seq_ids is None else np.asarray(seq_ids)
+        if sequence is not None and seq_ids is not None:
+            keep = [k for k, i in enumerate(indices) if str(seq_ids[i]) == sequence]
+            indices = [indices[k] for k in keep]
+            stems = None if stems is None else [stems[k] for k in keep]
+
+        total = len(indices)
+        start = max(0, min(start, total))
+        stop = total if stop is None else min(stop, total)
+        truncated = stop - start > _ENTRIES_CAP
+        if truncated:
+            stop = start + _ENTRIES_CAP
+
+        rows: list[dict] = []
+        for k in range(start, stop):
+            index = int(indices[k])
+            entry: dict = {"index": index, "pos": k}
+            if stems is not None:
+                entry["stem"] = stems[k]
+            try:
+                ref = ds.frame_info(index)
+                seq = getattr(ref, "sequence", None)
+                row = getattr(ref, "row", None)
+                entry["sequence"] = None if seq is None else str(seq)
+                entry["row"] = None if row is None else int(row)
+                owner = self._owner(ds, entry["sequence"])
+                if owner is not None and entry["row"] is not None:
+                    name, size = self._file_of(owner, channel, entry["row"])
+                    entry["file"] = name
+                    entry["bytes"] = size
+                    entry["timestamp"] = self._stamp_of(owner, channel, entry["row"])
+            except Exception:
+                pass
+            rows.append(entry)
+        return {
+            "total": total,
+            "start": start,
+            "stop": stop,
+            "truncated": truncated,
+            "entries": rows,
+        }
+
+    @staticmethod
+    def _owner(ds, sequence: str | None):
+        """The sequence dataset that actually holds the files of *sequence*.
+
+        A root delegates to its sub-datasets, which are the ones carrying
+        ``loaders`` / ``timestamps``; a single-sequence dataset is its own
+        owner. ``None`` when the id matches nothing.
+        """
+        ids = getattr(ds, "sequence_ids", None)
+        seqs = getattr(ds, "sequences", None)
+        if not ids or not seqs:
+            return ds
+        for sid, sub in zip(ids, seqs):
+            if str(sid) == str(sequence):
+                return sub
+        return None
+
+    @staticmethod
+    def _file_of(owner, channel: str, row: int) -> tuple[str | None, int | None]:
+        """``(filename, size)`` backing one row of a channel (``None`` if it
+        cannot be named -- a view, a single-array loader, a zarr store)."""
+        loader = (getattr(owner, "loaders", None) or {}).get(channel)
+        files = getattr(loader, "files", None)
+        directory = getattr(loader, "directory", None)
+        if not files or directory is None or not 0 <= row < len(files):
+            return None, None
+        name = str(files[row])
+        try:
+            size = os.stat(os.path.join(str(directory), name)).st_size
+        except OSError:
+            return name, None
+        return name, size
+
+    @staticmethod
+    def _stamp_of(owner, channel: str, row: int) -> float | None:
+        stamps = (getattr(owner, "timestamps", None) or {}).get(channel)
+        try:
+            return float(stamps[row]) if stamps is not None else None
+        except Exception:
+            return None
+
+    def locate(
+        self,
+        node_id: str,
+        stem: str,
+        channel: str | None = None,
+        sequence: str | None = None,
+    ) -> dict | None:
+        """Global frame indices whose on-disk file stem is *stem*.
+
+        The inverse of the flat index: a label lives in ``000850.npy``, and
+        this is what turns that name back into something the frame slider
+        understands. Narrow with *channel* (asynchronous timelines interleave
+        one stem sequence per channel) and *sequence* (every sequence of a
+        root restarts its numbering at ``000000``), otherwise every match is
+        returned in order, each tagged with where it came from.
+
+        Dataset nodes only; ``None`` for unknown or transform nodes.
+        """
+        node = self._nodes.get(node_id)
+        ds = self.objects.get(node_id)
+        if node is None or node.kind != "dataset" or ds is None:
+            return None
+        stems = self._frame_stems(ds)
+        if stems is None:
+            return {"matches": [], "error": "this dataset carries no file stems"}
+        hits = np.nonzero(stems == str(stem))[0]
+        seq_ids = getattr(ds, "frame_sequence_ids", None)
+        chan_ids = getattr(ds, "frame_channel_ids", None)
+        seq_ids = None if seq_ids is None else np.asarray(seq_ids)
+        chan_ids = None if chan_ids is None else np.asarray(chan_ids)
+        matches: list[dict] = []
+        for i in hits:
+            seq = None if seq_ids is None else str(seq_ids[i])
+            chan = None if chan_ids is None else str(chan_ids[i])
+            if channel is not None and chan is not None and chan != channel:
+                continue
+            if sequence is not None and seq is not None and seq != sequence:
+                continue
+            matches.append({"index": int(i), "sequence": seq, "channel": chan})
+        return {"matches": matches}
+
+    def _frame_stems(self, ds) -> np.ndarray | None:
+        """Filename stem per global frame, materialized once per dataset.
+
+        ``frame_stems`` is a *property*: on a root it re-concatenates every
+        sequence's table on each access -- ~0.7 s over a 1.8 M-event root,
+        which a per-frame request cannot pay. Frames are immutable while
+        serving, so the array is cached like the channel and track tables.
+        ``None`` when the dataset exposes no stems.
+        """
+        key = str(id(ds))
+        if key not in self._stems_cache:
+            stems = getattr(ds, "frame_stems", None)
+            try:
+                self._stems_cache[key] = None if stems is None else np.asarray(stems)
+            except Exception:
+                self._stems_cache[key] = None
+        return self._stems_cache[key]
+
+    def _stem(self, ds, index: int) -> str | None:
+        """On-disk filename stem of global frame *index* (``None`` if none)."""
+        stems = self._frame_stems(ds)
+        if stems is None:
+            return None
+        try:
+            return str(stems[index])
+        except Exception:
+            return None
 
     @staticmethod
     def _reduce(a: np.ndarray, c: int) -> float | None:

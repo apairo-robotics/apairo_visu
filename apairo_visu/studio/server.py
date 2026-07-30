@@ -131,6 +131,35 @@ def create_app(
             )
         return result
 
+    @app.get("/api/node/{node_id}/entries/{channel}")
+    def get_entries(
+        node_id: str,
+        channel: str,
+        start: int = 0,
+        stop: int | None = None,
+        sequence: str | None = None,
+    ) -> dict:
+        result = registry.entries(node_id, channel, start, stop, sequence)
+        if result is None:
+            raise HTTPException(
+                status_code=404, detail=f"unknown dataset node {node_id!r}"
+            )
+        return result
+
+    @app.get("/api/node/{node_id}/locate/{stem}")
+    def get_locate(
+        node_id: str,
+        stem: str,
+        channel: str | None = None,
+        sequence: str | None = None,
+    ) -> dict:
+        result = registry.locate(node_id, stem, channel, sequence)
+        if result is None:
+            raise HTTPException(
+                status_code=404, detail=f"unknown dataset node {node_id!r}"
+            )
+        return result
+
     @app.get("/api/catalog")
     def get_catalog() -> dict:
         return catalog.to_dict()

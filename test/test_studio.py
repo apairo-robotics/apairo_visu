@@ -477,7 +477,18 @@ def test_frames_vector_track_matches_frame_info_on_real_root(tmp_path):
     layout."""
     import apairo
 
-    for seq, n in (("seq_a", 4), ("seq_b", 2)):
+    ds = apairo.RawDataset(str(_kitti_root(tmp_path)))
+    reg = StudioRegistry([ds])
+    node_id = reg.spec.nodes[0].id
+    got = reg.frames(node_id, "camera")["indices"]
+    expected = [i for i in range(len(ds))
+                if getattr(ds.frame_info(i), "channel", None) == "camera"]
+    assert got == expected and len(got) == 6  # both sequences covered
+
+
+def _kitti_root(tmp_path, sequences=(("seq_a", 4), ("seq_b", 2))):
+    """A barakuda-shaped root: sequences x channels of numbered .npy files."""
+    for seq, n in sequences:
         for ch in ("lidar", "camera"):
             d = tmp_path / seq / ch
             d.mkdir(parents=True)
@@ -486,14 +497,155 @@ def test_frames_vector_track_matches_frame_info_on_real_root(tmp_path):
                 np.save(d / f"{i:06d}.npy", np.zeros(shape, dtype=np.float32))
             (d / "timestamps.txt").write_text(
                 "".join(f"{0.1 * i}\n" for i in range(n)))
+    return tmp_path
 
-    ds = apairo.RawDataset(str(tmp_path))
+
+def test_frames_track_carries_file_stems(tmp_path):
+    """The per-channel timeline names its files: a label lives in
+    ``000002.npy``, and the flat index alone can never say so."""
+    import apairo
+
+    reg = StudioRegistry([apairo.RawDataset(str(_kitti_root(tmp_path)))])
+    node_id = reg.spec.nodes[0].id
+    track = reg.frames(node_id, "lidar")
+    # 4 frames in seq_a then 2 in seq_b -- each sequence restarts at 000000.
+    assert track["stems"] == ["000000", "000001", "000002", "000003",
+                              "000000", "000001"]
+    assert len(track["indices"]) == len(track["stems"])
+
+
+def test_sample_carries_the_file_stem(tmp_path):
+    import apairo
+
+    ds = apairo.RawDataset(str(_kitti_root(tmp_path)))
     reg = StudioRegistry([ds])
     node_id = reg.spec.nodes[0].id
-    got = reg.frames(node_id, "camera")["indices"]
-    expected = [i for i in range(len(ds))
-                if getattr(ds.frame_info(i), "channel", None) == "camera"]
-    assert got == expected and len(got) == 6  # both sequences covered
+    index = reg.frames(node_id, "lidar")["indices"][2]
+    assert reg.sample(node_id, index)["frame"]["stem"] == "000002"
+
+
+def test_entries_list_what_a_channel_holds(tmp_path):
+    """The listing answers "which frames are in there", with the file that
+    backs each one -- what no single sample can show."""
+    import apairo
+
+    reg = StudioRegistry([apairo.RawDataset(str(_kitti_root(tmp_path)))])
+    node_id = reg.spec.nodes[0].id
+
+    listing = reg.entries(node_id, "lidar")
+    assert listing["total"] == 6  # 4 frames in seq_a, 2 in seq_b
+    assert listing["truncated"] is False
+    first = listing["entries"][0]
+    assert first["row"] == 0 and first["stem"] == "000000"
+    assert first["sequence"] == "seq_a" and first["file"] == "000000.npy"
+    assert first["bytes"] > 0 and first["timestamp"] == pytest.approx(0.0)
+    # The index is what the frame slider seeks to.
+    assert reg.sample(node_id, first["index"])["frame"]["channel"] == "lidar"
+    # Rows restart at 0 in the next sequence, files and all.
+    seq_b = [e for e in listing["entries"] if e["sequence"] == "seq_b"]
+    assert [e["row"] for e in seq_b] == [0, 1]
+    assert [e["file"] for e in seq_b] == ["000000.npy", "000001.npy"]
+
+
+def test_entries_pages_and_filters_by_sequence(tmp_path):
+    import apairo
+
+    reg = StudioRegistry([apairo.RawDataset(str(_kitti_root(tmp_path)))])
+    node_id = reg.spec.nodes[0].id
+
+    page = reg.entries(node_id, "lidar", start=1, stop=3)
+    assert [e["pos"] for e in page["entries"]] == [1, 2]
+    assert page["total"] == 6  # the total is the whole channel, not the page
+
+    only_b = reg.entries(node_id, "lidar", sequence="seq_b")
+    assert only_b["total"] == 2
+    assert {e["sequence"] for e in only_b["entries"]} == {"seq_b"}
+
+    assert reg.entries("nope", "lidar") is None
+
+
+def test_entries_caps_the_page(tmp_path, monkeypatch):
+    """Every row costs an os.stat, so a request is bounded and says so."""
+    import apairo
+
+    from apairo_visu.studio import registry as registry_module
+
+    monkeypatch.setattr(registry_module, "_ENTRIES_CAP", 2)
+    reg = StudioRegistry([apairo.RawDataset(str(_kitti_root(tmp_path)))])
+    listing = reg.entries(reg.spec.nodes[0].id, "lidar")
+    assert listing["truncated"] is True
+    assert len(listing["entries"]) == 2 and listing["total"] == 6
+
+
+def test_entries_without_a_channel_timeline_lists_every_frame():
+    """A synchronous dataset has no per-channel timeline: every frame carries
+    the channel, so the listing is the frame axis itself."""
+    reg = StudioRegistry([ArrayDataset(n=3, keys=("lidar",))])
+    listing = reg.entries(reg.spec.nodes[0].id, "lidar")
+    assert listing["total"] == 3
+    assert [e["index"] for e in listing["entries"]] == [0, 1, 2]
+    # No loader to name: file/bytes are simply absent, not an error.
+    assert listing["entries"][0].get("file") is None
+
+
+def test_entries_endpoint(tmp_path):
+    import apairo
+
+    app = create_app([apairo.RawDataset(str(_kitti_root(tmp_path)))])
+    client = TestClient(app)
+    node_id = app.state.registry.spec.nodes[0].id
+
+    payload = client.get(
+        f"/api/node/{node_id}/entries/lidar",
+        params={"start": 0, "stop": 2, "sequence": "seq_a"},
+    ).json()
+    assert payload["total"] == 4
+    assert [e["file"] for e in payload["entries"]] == ["000000.npy", "000001.npy"]
+    assert client.get("/api/node/nope/entries/lidar").status_code == 404
+
+
+def test_locate_maps_a_stem_back_to_frame_indices(tmp_path):
+    import apairo
+
+    ds = apairo.RawDataset(str(_kitti_root(tmp_path)))
+    reg = StudioRegistry([ds])
+    node_id = reg.spec.nodes[0].id
+
+    # Stems repeat across sequences and channels: unnarrowed, every match.
+    every = reg.locate(node_id, "000001")["matches"]
+    assert {(m["sequence"], m["channel"]) for m in every} == {
+        ("seq_a", "lidar"), ("seq_a", "camera"),
+        ("seq_b", "lidar"), ("seq_b", "camera"),
+    }
+    # Narrowed, exactly the one frame the user meant.
+    one = reg.locate(node_id, "000001", channel="lidar", sequence="seq_b")["matches"]
+    assert len(one) == 1
+    ref = ds.frame_info(one[0]["index"])
+    assert (ref.sequence, ref.channel, ref.row) == ("seq_b", "lidar", 1)
+
+    assert reg.locate(node_id, "999999")["matches"] == []
+    assert reg.locate("nope", "000001") is None
+
+
+def test_locate_endpoint(tmp_path):
+    import apairo
+
+    app = create_app([apairo.RawDataset(str(_kitti_root(tmp_path)))])
+    client = TestClient(app)
+    node_id = app.state.registry.spec.nodes[0].id
+
+    payload = client.get(
+        f"/api/node/{node_id}/locate/000003",
+        params={"channel": "lidar", "sequence": "seq_a"},
+    ).json()
+    assert [m["channel"] for m in payload["matches"]] == ["lidar"]
+    assert client.get("/api/node/nope/locate/000003").status_code == 404
+
+
+def test_locate_without_stems_reports_it():
+    reg = StudioRegistry([ArrayDataset(n=3)])
+    result = reg.locate(reg.spec.nodes[0].id, "000000")
+    assert result["matches"] == [] and "error" in result
 
 
 def test_frames_endpoint_and_sample_timestamp():
@@ -692,4 +844,5 @@ def test_static_front_served_with_ssr_graph(client):
     assert 'data-node="n0"' in index.text  # SSR-lite: graph in first paint
     assert client.get("/src/app.js").status_code == 200
     assert client.get("/src/resize.js").status_code == 200
+    assert client.get("/src/entriespanel.js").status_code == 200
     assert client.get("/style.css").status_code == 200
