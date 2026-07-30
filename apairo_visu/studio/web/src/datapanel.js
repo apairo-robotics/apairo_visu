@@ -105,8 +105,9 @@ function section(title, body) {
   return wrap;
 }
 
-// openData / openSeries (nodeId, label, channel, len) -> open a panel.
-export function inspectorSpec(openData, openSeries) {
+// openData / openSeries / openEntries (nodeId, label, channel, len, shape)
+// -> open a panel.
+export function inspectorSpec(openData, openSeries, openEntries) {
   return {
     key: "inspector",
     tag: "INFO",
@@ -167,6 +168,10 @@ export function inspectorSpec(openData, openSeries) {
             open.title = `Open ${ch.key} in a data panel`;
             open.addEventListener("click", () =>
               openData(nodeId, detail.label, ch.key, detail.len));
+            const list = el("button", "tbtn", "list");
+            list.title = `List the frames of ${ch.key} (file, index, size)`;
+            list.addEventListener("click", () =>
+              openEntries(nodeId, detail.label, ch.key, detail.len));
             const plot = el("button", "tbtn", "plot");
             plot.title = `Plot ${ch.key} across frames (series panel)`;
             plot.addEventListener("click", () =>
@@ -177,12 +182,13 @@ export function inspectorSpec(openData, openSeries) {
               nodeId, nodeLabel: detail.label, channel: ch.key, len: detail.len,
               index: Math.max(0, Math.min(store.getFrame(), (detail.len ?? 1) - 1)),
             }));
-            td.append(open, plot, designate);
+            td.append(open, list, plot, designate);
             tr.appendChild(td);
             table.appendChild(tr);
           }
-          panel.body.appendChild(
-            section("channels — open: data panel · plot: series · try: catalog target", table));
+          panel.body.appendChild(section(
+            "channels — open: data · list: frames · plot: series · try: catalog",
+            table));
         }
 
         if (detail.sequences && detail.sequences.length) {

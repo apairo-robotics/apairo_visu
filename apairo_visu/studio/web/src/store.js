@@ -160,6 +160,18 @@ export function channelFrames(nodeId, channel) {
   return framesCache.get(key);
 }
 
+// Global frame indices whose on-disk file stem is `stem` at a node, narrowed
+// by channel / sequence. Turns a label filename (000850.npy) back into a
+// frame index -- the flat timeline never names its files.
+export function locate(nodeId, stem, { channel, sequence } = {}) {
+  const query = new URLSearchParams();
+  if (channel) query.set("channel", channel);
+  if (sequence) query.set("sequence", sequence);
+  const suffix = query.toString() ? `?${query}` : "";
+  return api(
+    `/api/node/${nodeId}/locate/${encodeURIComponent(stem)}${suffix}`);
+}
+
 // One channel of one PRECISE frame (not the global frame): used to hold the
 // last available data when the bound channel is absent at the current
 // frame. Cached for the session: frames are immutable while serving.

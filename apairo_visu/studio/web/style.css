@@ -239,6 +239,10 @@ table.kv th { color: var(--muted); font-weight: 500; white-space: nowrap; }
 table.kv tr:last-child td, table.kv tr:last-child th { border-bottom: none; }
 td.num { font-variant-numeric: tabular-nums; }
 
+/* Channel listing: every row is a seek, the current frame is marked. */
+table.entries tr:not(:first-child) { cursor: pointer; }
+table.entries tr:not(:first-child):hover td { background: var(--line); }
+table.entries tr.at-frame td { color: var(--accent); font-weight: 600; }
 /* A plot whose selection no longer matches what is drawn. */
 .tbtn.primed { color: var(--accent); }
 
