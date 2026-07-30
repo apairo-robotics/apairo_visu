@@ -159,28 +159,52 @@ Shipped so far:
 - **Panel workbench** -- dockable panels (split-tree layout adapted from
   projector): drag a panel's header onto another to dock left/right/top/
   bottom; layout persists in the browser. Core panels: pipeline graph, node
-  inspector, frame metrics; any channel opens as its own data panel (the
-  "open" button in the inspector's channel table).
+  inspector, frame metrics; any channel opens as its own data panel, frame
+  listing or series chart (the "open" / "list" / "plot" buttons in the
+  inspector's channel table).
 - **Structure inspector** -- click any node: parameters, docstring, channel
   table read from real samples. On asynchronous timelines (one channel per
   frame) the table still lists **every declared channel** -- camera next to
   lidar -- by locating one frame per channel through `frame_info`.
 - **Data panels** -- a global frame slider drives every panel; each data
   panel is bound to one node+channel with a selectable presentation (auto,
-  3D, BEV scatter, image, raster heatmap, histogram, values). Point clouds
-  with xyz columns open in the **3D viewer** by default (three.js engine
-  shared with toaster: trackball/orbit camera, motion LOD, fly keys); the
-  BEV stays one select away. The **BEV zooms**: scroll to zoom at the
-  cursor, drag a box to zoom on a selection, shift-drag to pan,
-  double-click to reset. Clouds color by any of their own columns **or by a
+  3D, BEV scatter, image, raster heatmap, histogram, values). Every stage
+  is sized to the panel, so a data panel taking half the page renders at
+  half-page resolution instead of a fixed thumbnail, and redraws when a
+  gutter moves. Point clouds with xyz columns open in the **3D viewer** by
+  default (three.js engine shared with toaster: trackball/orbit camera,
+  motion LOD, WASD/QE fly keys, **shift+arrows** to step-rotate the view --
+  roll and pitch, to turn a scan that came in tilted upright). Those camera
+  keys act on the **clicked** panel, not the hovered one: click a panel to
+  give it the keys and it keeps them, outlined in the accent colour, until
+  another panel is clicked -- so the pointer is free to reach a control or
+  another panel mid-gesture. The BEV stays one select away. The **BEV
+  zooms**: scroll to zoom at the cursor, drag a box to zoom on a selection,
+  shift-drag to pan, double-click to reset. **Images and rasters zoom the
+  same way** (scroll at the cursor, drag to pan, double-click to reset):
+  pixels are kept in an offscreen source at native resolution and blitted
+  under the current view, so zooming into a corner of a camera frame shows
+  real pixels, not an upscaled thumbnail. Clouds color by any of their own columns **or by a
   per-point sibling channel**: pick `color: labels` and the cloud renders
   as a labeled point cloud (categorical palette for integer labels, viridis
   for continuous channels), in both BEV and 3D. A point-size control drives
   both renderers; images get an R/B swap toggle (rosbag frames are BGR).
-  Each panel also carries its **own frame input**: type an index to diverge
-  from the global slider, **lock** to keep it -- moving the global slider
-  resynchronizes every panel except the locked ones, so two moments of the
-  same channel compare side by side.
+  Each panel also carries its **own frame input**, counted in **its
+  channel's own frames** -- a lidar panel sits at `lidar 000850`, not at
+  the interleaved global index that no label file is named after (and that
+  shifts the moment a label is written to another channel). Type a stem
+  (`000850`, or `850` without the padding) and press Enter to seek this
+  channel. Panel metas read the same way:
+  `lidar 000850 · frame 17206 · Full_rural_and_semi-urban`.
+  A per-panel **sync** checkbox says where that seek lands. Ticked (the
+  default) the panel and the global timeline drive **each other**: seeking
+  here moves the topbar slider and every other synced panel onto the
+  matching frame, and a global move brings this panel along -- so calling
+  up `lidar 000850` puts the camera on the image next to it. Unticked, the
+  panel is an island: seek and arrow it freely without disturbing anything,
+  and the global timeline leaves it alone -- two moments of the same
+  channel compare side by side. Tick it again and the frame it wandered to
+  becomes everyone's.
   Previews work *at any node and after any transform
   step* (pipeline prefix). Raw arrays travel as `{dtype, shape,
   data(base64)}` and all rendering is client-side: viridis BEV with robust
@@ -191,35 +215,78 @@ Shipped so far:
 - **Per-channel timeline** -- on asynchronous datasets the global slider
   walks the interleaved event timeline; the topbar channel select locks it
   to one channel's frames (lidar events only, camera events only). The
-  counter then leads with the channel-relative index, the global timeline
-  index following as context (`camera 12/450 · frame 5031`), and the
-  restriction combines with a sequence range. Data panel metas carry the
-  same reading per frame (`frame 5031 (seq_b · camera 11)`). Meanwhile data panels bound
-  to a channel absent at the current frame **hold the last available
-  data**, annotated with its age (`held from frame 16 (0.083 s old)` from
-  timestamps, frame distance without them) -- the camera panel keeps
-  showing the latest image while you scrub lidar frames.
+  counter then leads with the **file the frame came from**, the
+  channel-relative position and the global timeline index following as
+  context (`camera 000011 · 12/450 · frame 5031`), and the restriction
+  combines with a sequence range. Data panel metas carry the same reading
+  per frame (`frame 5031 (seq_b · camera 000011)`). Meanwhile data panels
+  bound to a channel absent at the current frame **hold the nearest
+  available data** and name *that* frame, annotated with its distance
+  (`camera 000004 · frame 16 · held (0.083 s old)` from timestamps, frame
+  distance without them) -- the camera panel keeps showing the latest image
+  while you scrub lidar frames. Before a channel's first event the panel
+  holds the *first* frame ahead instead (`first (0.025 s ahead)`), so
+  opening a channel on an asynchronous root never lands on an empty panel
+  just because its events start later than frame 0.
 - **Per-sequence inspection** -- dataset nodes that carry sequence
   structure list their sequences in the inspector (id, frame count, global
   range); "view" restricts the frame slider to that sequence ("all frames"
   in the topbar clears it). Data panels show each frame's provenance
-  (`frame 12 (seq_b)`). Reads apairo's provenance contract
-  (`frame_sequence_ids` / `frame_info`), which views forward through any
-  chain -- e.g. a synchronized multi-sequence root.
+  (`frame 12 (seq_b · lidar 000850)`). Reads apairo's provenance contract
+  (`frame_sequence_ids` / `frame_stems` / `frame_info`), which views
+  forward through any chain -- e.g. a synchronized multi-sequence root.
+- **Keyboard timeline** -- left/right step one frame, up/down ten (up goes
+  forward: the arrows read as a throttle, not a list cursor). A step lands
+  on a real event of **one channel** -- the next *lidar* scan, not the next
+  interleaved imu message. Which channel, in order: the topbar track when
+  one is set (the slider walks it, so the arrows agree with the counter),
+  else the **focused panel's own channel**, so clicking a lidar view and
+  pressing right steps lidar without touching the topbar at all. It moves
+  the **global** frame either way, so every other panel follows: the camera
+  panel holds its nearest image, the metrics and the series marker follow
+  along, all in step with the lidar view. Focused text controls keep their
+  own arrows.
+- **Go to a file** -- a flat frame index says nothing about which file a
+  frame came from, and every sequence of a root restarts its numbering at
+  `000000`. The topbar **go to** box takes the on-disk stem a label is
+  named after (`000850`, or `850`) and jumps to it, scoped to the selected
+  channel and sequence; when the stem is not there it widens the search and
+  reports where it actually lives. Without a channel track a bare number is
+  read as a frame index. Server-side via
+  `/api/node/{id}/locate/{stem}?channel=&sequence=`, so it works whether or
+  not the channel's timeline is loaded.
 - **Frame metrics** -- per-channel metrics of the selected node computed
   client-side each frame: per-column min/mean/max for point matrices,
   non-finite counts, and value distributions for label-like channels.
-- **Series panels** -- "plot" on any inspector channel row charts that
-  channel **across frames** (the whole dataset, or the sequence selected in
-  the inspector): imu components, speeds, any per-frame scalar. 1-D frames
-  index directly, matrix frames index flat (a 4x4 pose trajectory is
-  components 3 and 7 in path mode), per-point clouds reduce a column to its
-  mean. An optional **rolling mean/variance window** reproduces
-  roughness-style signals (imu variance over N frames) without touching the
-  data; **path mode** plots x against y for trajectories. The chart doubles
-  as a navigator: a dashed marker tracks the global frame, clicking seeks
-  to it. Reductions run server-side (`/api/node/{id}/series/{channel}`,
-  paged, channel loading narrowed with `select`).
+- **Channel listing** -- "list" on any inspector channel row opens the
+  channel's **contents**, one row per frame: channel row, the on-disk file
+  backing it, the global frame index, the time since the channel's first
+  frame, and the file size. That is the view that answers "which frames
+  have I already labelled and which are left" -- a `ground_truth` listing
+  is exactly the label set. Filter by sequence, page through with
+  prev/next, jump to a stem with *find*, page to wherever the timeline sits
+  with *here*, and click any row to seek. Paged server-side
+  (`/api/node/{id}/entries/{channel}`, capped per request because every row
+  costs an `os.stat`); file and timestamp are best-effort, so a view or an
+  exotic loader lists what it can rather than failing.
+- **Series panels** -- "plot" on any inspector channel row opens a chart of
+  that channel **across frames** (the whole dataset, or the sequence
+  selected in the inspector): imu components, speeds, any per-frame scalar.
+  Nothing is computed until you press **plot** -- reducing a
+  million-frame channel is a decision, not a side effect of opening a
+  panel -- and the component is picked from a **named list** derived from
+  the channel's shape: `c0…c9` for a 1-D imu frame, `c3 (row 0, col 3)` for
+  a 4x4 pose, `col 2 (z)` for a point cloud. 1-D frames index directly,
+  matrix frames index flat (a 4x4 pose trajectory is components 3 and 7 in
+  path mode), per-point clouds reduce a column to their mean. Changing the
+  component or the range primes the button for a **re-plot** instead of
+  refetching behind your back; the **rolling mean/variance window** and the
+  stat pick redraw immediately, being pure client-side arithmetic on the
+  values already fetched. **Path mode** plots x against y for trajectories.
+  The chart doubles as a navigator: a dashed marker tracks the global
+  frame, clicking seeks to it. Reductions run server-side
+  (`/api/node/{id}/series/{channel}`, paged, channel loading narrowed with
+  `select`).
 - **Transform catalog & try** -- the catalog panel lists the public
   callables of `apairo_transform` / `apairo_preprocess` (introspected:
   signature, docstring, kwargs rendered as typed controls). Designate the
