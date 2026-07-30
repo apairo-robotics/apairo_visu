@@ -179,6 +179,51 @@ export function drawRaster(canvas, arr) {
   ctx.putImageData(img, 0, 0);
 }
 
+/* ------------------------------------------------------- zoomable raster */
+// Pixel data goes into an offscreen canvas at its native resolution, and the
+// visible canvas only ever blits a view of it. That separation is what makes
+// zooming into a corner of a camera frame possible: the source keeps every
+// pixel, the destination is sized to the panel, and `drawSource` decides
+// which part lands where -- rescaling putImageData would resample the data.
+
+// (H, W, C) uint8 -> an offscreen canvas at native resolution.
+export function imageCanvas(arr, bgr = false) {
+  const source = document.createElement("canvas");
+  drawImage(source, arr, bgr);
+  return source;
+}
+
+// (H, W) scalars -> an offscreen viridis heatmap at native resolution.
+export function rasterCanvas(arr) {
+  const source = document.createElement("canvas");
+  drawRaster(source, arr);
+  return source;
+}
+
+// The view that fits a sw×sh source into a dw×dh destination: centred, whole
+// source visible. {cx, cy} in SOURCE pixels (y down), scale in destination
+// px per source px -- the same {cx, cy, scale} shape cloudFit returns, so
+// one pan/zoom binding drives both stages.
+export function sourceFit(sw, sh, dw, dh) {
+  return { cx: sw / 2, cy: sh / 2, scale: Math.min(dw / sw, dh / sh) };
+}
+
+// Blit `source` onto `canvas` under a {cx, cy, scale} view. Smoothing is off
+// once magnified: at 4x a camera frame should show its pixels, not a blur.
+export function drawSource(canvas, source, view) {
+  const ctx = canvas.getContext("2d");
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (!view || !(view.scale > 0)) return;
+  ctx.imageSmoothingEnabled = view.scale < 1;
+  ctx.drawImage(
+    source,
+    canvas.width / 2 - view.cx * view.scale,
+    canvas.height / 2 - view.cy * view.scale,
+    source.width * view.scale,
+    source.height * view.scale,
+  );
+}
+
 /* ----------------------------------------------------------- histogram */
 
 export function drawHist(canvas, arr, accent, muted) {
