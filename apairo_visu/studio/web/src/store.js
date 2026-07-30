@@ -99,6 +99,30 @@ export function onTrack(fn) {
   return () => trackListeners.delete(fn);
 }
 
+/* --------------------------------------------------------- panel focus */
+// The data panel the keyboard acts on: the camera keys (WASD/QE fly,
+// shift+arrows rotate) drive ONE viewer, and the frame arrows step along
+// THAT panel's channel. Which panel is a deliberate click, not wherever the
+// pointer happens to rest -- hover would be ambiguous the moment two panels
+// sit side by side, and it changes owner every time the mouse crosses a
+// panel on its way somewhere else. Holds {key, nodeId, channel} or null.
+
+let focused = null;
+const focusListeners = new Set();
+
+export const getFocused = () => focused;
+
+export function setFocused(binding) {
+  if ((binding && binding.key) === (focused && focused.key)) return;
+  focused = binding;
+  for (const fn of focusListeners) fn(focused);
+}
+
+export function onFocus(fn) {
+  focusListeners.add(fn);
+  return () => focusListeners.delete(fn);
+}
+
 /* ------------------------------------------------------------ selection */
 
 let selected = null;

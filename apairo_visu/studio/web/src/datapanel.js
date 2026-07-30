@@ -7,8 +7,8 @@ import * as store from "./store.js";
 import { Viewer } from "./engine/viewer.js";
 import {
   cloudColorMapper, cloudColorValues, cloudFit, columnStats, columnStatsLine,
-  drawCloud, drawHist, drawImage, drawRaster, fmt, previewKind, statsLine,
-  uniqueCounts, valuesText,
+  drawCloud, drawHist, drawSource, fmt, imageCanvas, previewKind,
+  rasterCanvas, sourceFit, statsLine, uniqueCounts, valuesText,
 } from "./views.js";
 
 export const el = (tag, cls, text) => {
@@ -413,13 +413,18 @@ export function dataSpec(binding) {
           : String(Math.min(2, arr.shape[1] - 1));
       };
 
-      // Wheel = zoom at the cursor, drag = rubber-band zoom to the box,
-      // shift-drag = pan, double-click = reset to the auto fit.
-      const bindBev = (canvas, spec) => {
+      // Wheel = zoom at the cursor, drag = rubber-band zoom to the box (or
+      // pan when `box` is off), shift-drag = pan, double-click = reset to the
+      // auto fit. One implementation for every 2-D stage: the BEV works in
+      // world metres with y up, an image in source pixels with y down, and
+      // both carry the same {cx, cy, scale} view -- `yUp` is the only
+      // difference, so zooming into a corner of a camera frame is the same
+      // gesture as zooming into a corner of a scan.
+      const bindViewport = (canvas, ctl) => {
+        const { fit, redraw, setView, yUp = true, box = true } = ctl;
         const w = canvas.width, h = canvas.height;
-        const redraw = () =>
-          drawCloud(canvas, arr, spec, bevView, Number(sizeInput.value) || 1.7);
-        const view = () => bevView ?? cloudFit(arr, w, h);
+        const sy = yUp ? -1 : 1;
+        const view = () => ctl.getView() ?? fit();
         const toPx = (e) => {
           const r = canvas.getBoundingClientRect();
           return {
@@ -429,7 +434,7 @@ export function dataSpec(binding) {
         };
         const toWorld = (p, v) => ({
           x: v.cx + (p.x - w / 2) / v.scale,
-          y: v.cy - (p.y - h / 2) / v.scale,
+          y: v.cy + sy * (p.y - h / 2) / v.scale,
         });
 
         canvas.addEventListener("wheel", (e) => {
@@ -440,11 +445,11 @@ export function dataSpec(binding) {
           const wpt = toWorld(p, v);
           const scale = v.scale * (e.deltaY > 0 ? 1 / 1.2 : 1.2);
           // Keep the world point under the cursor fixed while scaling.
-          bevView = {
+          setView({
             cx: wpt.x - (p.x - w / 2) / scale,
-            cy: wpt.y + (p.y - h / 2) / scale,
+            cy: wpt.y - sy * (p.y - h / 2) / scale,
             scale,
-          };
+          });
           redraw();
         }, { passive: false });
 
@@ -454,7 +459,7 @@ export function dataSpec(binding) {
           if (!v || e.button !== 0) return;
           canvas.setPointerCapture(e.pointerId);
           const p = toPx(e);
-          drag = e.shiftKey
+          drag = e.shiftKey || !box
             ? { pan: true, px: p, view: v }
             : { pan: false, px: p, to: p,
                 snap: canvas.getContext("2d").getImageData(0, 0, w, h) };
@@ -463,11 +468,11 @@ export function dataSpec(binding) {
           if (!drag) return;
           const p = toPx(e);
           if (drag.pan) {
-            bevView = {
+            setView({
               cx: drag.view.cx - (p.x - drag.px.x) / drag.view.scale,
-              cy: drag.view.cy + (p.y - drag.px.y) / drag.view.scale,
+              cy: drag.view.cy - sy * (p.y - drag.px.y) / drag.view.scale,
               scale: drag.view.scale,
-            };
+            });
             redraw();
             return;
           }
@@ -488,15 +493,32 @@ export function dataSpec(binding) {
           const bw = Math.abs(d.to.x - d.px.x), bh = Math.abs(d.to.y - d.px.y);
           if (!v || bw < 8 || bh < 8) { redraw(); return; } // a click, not a box
           const a = toWorld(d.px, v), b = toWorld(d.to, v);
-          bevView = {
+          setView({
             cx: (a.x + b.x) / 2,
             cy: (a.y + b.y) / 2,
             scale: 0.95 * Math.min(w / Math.abs(b.x - a.x), h / Math.abs(b.y - a.y)),
-          };
+          });
           redraw();
         });
-        canvas.addEventListener("dblclick", () => { bevView = null; redraw(); });
+        canvas.addEventListener("dblclick", () => { setView(null); redraw(); });
       };
+
+      // The keyboard acts on the FOCUSED panel: click a panel to give it the
+      // keys, and it keeps them until another panel is clicked -- the
+      // pointer is then free to go anywhere (a control, another panel, off
+      // the window) without the camera changing owner mid-gesture. The
+      // binding travels with the focus so the frame arrows can step along
+      // THIS panel's channel; the outline shows which panel holds the keys.
+      // seekBy is declared further down (it needs the track helpers and
+      // refresh): wrap it so the binding does not read it before it exists.
+      const binding = {
+        key: panel.key, nodeId, channel, synced, seekBy: (d) => seekBy(d),
+      };
+      const hasKeys = () => store.getFocused()?.key === panel.key;
+      panel.el.addEventListener("pointerdown", () => store.setFocused(binding));
+      const offFocus = store.onFocus((f) =>
+        panel.el.classList.toggle("focused", f?.key === panel.key));
+      store.setFocused(binding); // a panel just opened is the one you meant
 
       // 3D viewer: created on first use, kept alive across frames of the
       // stream, torn down when the mode leaves 3D or the panel closes.
@@ -510,9 +532,47 @@ export function dataSpec(binding) {
         if (v3d) return v3d;
         const host = el("div", "cloud3d-host");
         const viewer = new Viewer(host, { lodBudget: 500000 });
+        // The engine's fly keys are window-level: several data panels can
+        // each hold a viewer, so gate them on the focused one (the hook the
+        // engine documents for multi-viewer hosts).
+        viewer.flyGate = hasKeys;
         viewer.setBackground(0x14161c);
         v3d = { host, viewer, framed: false };
         return v3d;
+      };
+
+      // Shift+arrows step-rotate the view: ←/→ roll, ↑/↓ pitch, so a scan
+      // that came in tilted can be turned upright without dragging (yaw
+      // stays on the orbit drag). Toaster puts this on the plain arrows,
+      // but here those walk the frame timeline -- stepping through lidar
+      // events is the more frequent move, and it must stay one key away.
+      // The shared engine exposes rotateView and deliberately binds no keys
+      // (it knows nothing about its host's DOM), so every consumer wires
+      // this itself.
+      const ROTATE_STEP = Math.PI / 36; // 5 degrees per press
+      const onArrowKey = (e) => {
+        if (!v3d || !hasKeys() || !e.shiftKey || !e.key.startsWith("Arrow")) return;
+        if (e.ctrlKey || e.metaKey || e.altKey) return;
+        const rotate = (kind, sign) => v3d.viewer.rotateView(kind, sign * ROTATE_STEP);
+        if (e.key === "ArrowLeft") rotate("roll", 1);
+        else if (e.key === "ArrowRight") rotate("roll", -1);
+        else if (e.key === "ArrowUp") rotate("pitch", 1);
+        else if (e.key === "ArrowDown") rotate("pitch", -1);
+        else return;
+        e.preventDefault();
+      };
+      window.addEventListener("keydown", onArrowKey);
+
+      // A canvas whose backing store matches the stage box: a panel taking
+      // half the page draws at half-page resolution instead of a fixed
+      // 640x480 thumbnail stretched to fit. Height can be pinned -- the
+      // histogram is a strip, not a viewport.
+      const stageCanvas = (cls, fixedHeight = null) => {
+        const canvas = el("canvas", cls);
+        canvas.width = Math.max(160, Math.round(stage.clientWidth) || 640);
+        canvas.height = fixedHeight
+          ?? Math.max(120, Math.round(stage.clientHeight) || 480);
+        return canvas;
       };
 
       const drawAs = (kind) => {
@@ -537,30 +597,56 @@ export function dataSpec(binding) {
             if (v3dTimer) clearTimeout(v3dTimer);
             v3dTimer = setTimeout(() => { if (v3d) v3d.viewer.buildOctree(); }, 400);
             foot.textContent = colorFoot(spec) +
-              (arr.fullRows ? `  ·  sample of ${arr.fullRows} pts` : "");
+              (arr.fullRows ? `  ·  sample of ${arr.fullRows} pts` : "") +
+              "  ·  drag: orbit · WASD/QE: fly · shift+arrows: rotate " +
+              "(keys go to the clicked panel)";
           } else if (kind === "cloud" && arr.shape.length === 2) {
-            const canvas = el("canvas", "chan-canvas");
-            canvas.width = 640;
-            canvas.height = 480;
+            const canvas = stageCanvas("chan-canvas");
             stage.appendChild(canvas);
             const spec = colorSpec();
-            drawCloud(canvas, arr, spec, bevView, Number(sizeInput.value) || 1.7);
-            bindBev(canvas, spec);
+            const redraw = () =>
+              drawCloud(canvas, arr, spec, bevView, Number(sizeInput.value) || 1.7);
+            redraw();
+            bindViewport(canvas, {
+              fit: () => cloudFit(arr, canvas.width, canvas.height),
+              getView: () => bevView,
+              setView: (v) => { bevView = v; },
+              redraw,
+            });
             stage.appendChild(el("div", "hint",
               "scroll: zoom · drag: zoom to box · shift-drag: pan · double-click: reset"));
             foot.textContent = colorFoot(spec);
-          } else if (kind === "image" && arr.shape.length === 3) {
-            const canvas = el("canvas", "chan-canvas img");
+          } else if ((kind === "image" && arr.shape.length === 3)
+                  || (kind === "raster" && arr.shape.length === 2)) {
+            // Pixels live in an offscreen source at native resolution; the
+            // visible canvas is panel-sized and only blits a view of it, so
+            // zooming shows real pixels instead of an upscaled thumbnail.
+            const source = kind === "image"
+              ? imageCanvas(arr, localStorage.getItem("studio.bgr") === "1")
+              : rasterCanvas(arr);
+            const canvas = stageCanvas("chan-canvas img");
             stage.appendChild(canvas);
-            drawImage(canvas, arr, localStorage.getItem("studio.bgr") === "1");
-          } else if (kind === "raster" && arr.shape.length === 2) {
-            const canvas = el("canvas", "chan-canvas img");
-            stage.appendChild(canvas);
-            drawRaster(canvas, arr);
+            const fit = () =>
+              sourceFit(source.width, source.height, canvas.width, canvas.height);
+            const redraw = () => {
+              const view = imgView ?? fit();
+              drawSource(canvas, source, view);
+              foot.textContent = `${source.width} × ${source.height} px · ` +
+                `zoom ${view.scale.toFixed(2)}x`;
+            };
+            redraw();
+            bindViewport(canvas, {
+              fit,
+              getView: () => imgView,
+              setView: (v) => { imgView = v; },
+              redraw,
+              yUp: false,
+              box: false, // a drag pans: an image has no rubber-band selection
+            });
+            stage.appendChild(el("div", "hint",
+              "scroll: zoom · drag: pan · double-click: reset"));
           } else if (kind === "hist") {
-            const canvas = el("canvas", "chan-canvas");
-            canvas.width = 640;
-            canvas.height = 160;
+            const canvas = stageCanvas("chan-canvas", 160);
             stage.appendChild(canvas);
             drawHist(canvas, arr, accent(), muted());
             foot.textContent = statsLine(arr);
@@ -578,34 +664,48 @@ export function dataSpec(binding) {
         return arr && arr.shape ? previewKind(arr.shape, arr.dtype) : "values";
       };
 
+      // Panel resized (a gutter dragged, a panel docked or closed): the
+      // stage canvas was sized from the stage box, so redraw at the new
+      // resolution rather than let the browser stretch a stale one. The 3D
+      // host fills its box by itself and only needs the viewport told.
+      let resizeTimer = null;
+      const stageObserver = new ResizeObserver(() => {
+        if (resizeTimer) clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(() => {
+          resizeTimer = null;
+          if (v3d) v3d.viewer.resize();
+          else drawAs(currentKind());
+        }, 80);
+      });
+      stageObserver.observe(stage);
+
       // Async timelines: the bound channel may be absent at the current
-      // frame. Hold the latest earlier frame that carries it, and say how
-      // old it is relative to the current frame (timestamps when the
-      // dataset has them, frame distance otherwise).
+      // frame. Hold the nearest frame that carries it -- the latest earlier
+      // one, which is what a sensor stream actually shows at that instant;
+      // failing that (before the channel's first event, e.g. frame 0 of a
+      // raw root whose lidar starts at 19) the first later one, so opening a
+      // channel never lands on an empty panel. The note says how far off it
+      // is (timestamps when the dataset has them, frame distance otherwise).
       const holdLast = async (sample) => {
+        const t = await loadTrack();
+        if (!t) return null; // transform node or no timeline: "channel absent"
         try {
-          const { indices } = await store.channelFrames(nodeId, channel);
-          if (!indices.length) return null;
-          const at = indices[
-            (() => {
-              let lo = 0, hi = indices.length - 1, best = -1;
-              while (lo <= hi) {
-                const m = (lo + hi) >> 1;
-                if (indices[m] <= sample.index) { best = m; lo = m + 1; }
-                else hi = m - 1;
-              }
-              return best;
-            })()
-          ];
+          const best = posOf(t.indices, sample.index);
+          const ahead = best < 0;
+          const at = t.indices[ahead ? 0 : best];
           if (at === undefined) return null;
           const held = await store.sampleOne(nodeId, at, channel);
           if (!held.arr) return null;
-          const age = held.timestamp != null && sample.timestamp != null
-            ? `${(sample.timestamp - held.timestamp).toFixed(3)} s old`
-            : `${sample.index - held.index} frames old`;
-          return { arr: held.arr, note: ` · held from frame ${held.index} (${age})` };
+          const delta = held.timestamp != null && sample.timestamp != null
+            ? `${Math.abs(sample.timestamp - held.timestamp).toFixed(3)} s`
+            : `${Math.abs(sample.index - held.index)} frames`;
+          return {
+            arr: held.arr,
+            index: held.index,
+            note: ` · ${ahead ? "first" : "held"} (${delta} ${ahead ? "ahead" : "old"})`,
+          };
         } catch {
-          return null; // transform node or no timeline: plain "channel absent"
+          return null;
         }
       };
 
@@ -740,6 +840,11 @@ export function dataSpec(binding) {
       });
       panel.onRemove = () => {
         offFrame();
+        offFocus();
+        if (hasKeys()) store.setFocused(null);
+        window.removeEventListener("keydown", onArrowKey);
+        stageObserver.disconnect();
+        if (resizeTimer) clearTimeout(resizeTimer);
         drop3d();
       };
       refresh();

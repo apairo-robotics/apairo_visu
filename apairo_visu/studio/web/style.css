@@ -103,6 +103,11 @@ button.ghost:hover, button.ghost:focus-visible { color: var(--text); border-colo
   overflow: hidden; position: relative;
 }
 .vpanel.dragging { opacity: 0.65; }
+/* The data panel the camera keys act on (WASD/QE fly, shift+arrows rotate).
+   Set by clicking the panel, not by hovering it, so the outline is a stable
+   answer to "where will my keys land". */
+.vpanel.focused { border-color: var(--accent); }
+.vpanel.focused > .vpanel-head { border-bottom-color: var(--accent); }
 .vpanel-head {
   display: flex; align-items: center; gap: 8px; padding: 5px 10px;
   border-bottom: 1px solid var(--line); user-select: none; flex: 0 0 auto;

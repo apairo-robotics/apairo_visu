@@ -6,6 +6,7 @@
 
 import { catalogSpec, trySpec } from "./catalogpanel.js";
 import { dataSpec, el, inspectorSpec, metricsSpec, pipelineSpec } from "./datapanel.js";
+import { entriesSpec } from "./entriespanel.js";
 import { seriesSpec } from "./seriespanel.js";
 import { PanelManager, fillSelect } from "./panels.js";
 import * as store from "./store.js";
@@ -129,22 +130,167 @@ function initSlider() {
       pending = null;
       const now = positions();
       const v = Number(slider.value);
-      store.setFrame(now && now.length ? now[Math.min(v, now.length - 1)] : v);
+      store.setFrame(now && now.indices.length
+        ? now.indices[Math.min(v, now.indices.length - 1)]
+        : v);
     }, 60);
   });
   rangeClear.addEventListener("click", () => store.setRange(null));
+
+  // The focused data panel's own event timeline, prefetched on focus so an
+  // arrow press stays synchronous -- stepping has to feel like a key repeat,
+  // not a request.
+  let focusTrack = null;
+  store.onFocus(async (f) => {
+    focusTrack = null;
+    if (!f) return;
+    try {
+      const t = await store.channelFrames(f.nodeId, f.channel);
+      if (store.getFocused()?.key === f.key && t.indices.length) {
+        focusTrack = t.indices;
+      }
+    } catch { /* transform node or synchronous data: global stepping */ }
+  });
+
+  // Arrow keys step the timeline. Which timeline, in order: the topbar
+  // channel track when one is set (the slider walks it, so the arrows must
+  // agree with what the counter shows), else the FOCUSED panel's own channel
+  // -- an arrow on a lidar view steps one scan, not one interleaved imu
+  // message -- else one global frame. It moves the GLOBAL frame either way,
+  // so every other panel follows and the camera, the metrics and the series
+  // marker stay in step with the lidar view.
+  const step = (delta) => {
+    const p = positions();
+    const idxs = p && p.indices.length ? p.indices : focusTrack;
+    if (idxs && idxs.length) {
+      const base = floorPos(idxs, store.getFrame());
+      // Between two events, stepping back should land on the one behind, not
+      // one further: floorPos already points there.
+      const off = delta < 0 && idxs[base] !== store.getFrame() ? 1 : 0;
+      const next = Math.max(0, Math.min(base + delta + off, idxs.length - 1));
+      store.setFrame(idxs[next]);
+      return;
+    }
+    const [lo, hi] = bounds();
+    store.setFrame(Math.max(lo, Math.min(store.getFrame() + delta, hi)));
+  };
+  window.addEventListener("keydown", (e) => {
+    // Shift+arrows rotate the hovered 3D view (bound in the data panel), and
+    // a focused text control keeps its own arrows -- the go-to box, a
+    // panel's frame input. The slider is deliberately NOT excluded: its
+    // native stepping would move one position where ↑/↓ should move ten.
+    if (e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+    const t = e.target;
+    if (t && (t.tagName === "SELECT" || t.tagName === "TEXTAREA")) return;
+    if (t && t.tagName === "INPUT" && t.type !== "range") return;
+    // Up goes forward, down goes back: the arrows read as a throttle here,
+    // not as a list cursor -- up is more, down is less.
+    const delta = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: 10, ArrowDown: -10 }[e.key];
+    if (delta === undefined) return;
+    e.preventDefault();
+    // An unsynced panel is an island: its arrows move only itself, never the
+    // shared timeline. A synced one routes through the global frame below,
+    // so every other synced panel comes along.
+    const f = store.getFocused();
+    if (f && f.synced && !f.synced()) f.seekBy(delta);
+    else step(delta);
+  });
+
+  // "go to": a file stem (000850 — what a label file is named after), or a
+  // plain frame index when no channel track narrows the timeline. Stems
+  // restart at 000000 in every sequence and every channel has its own, so
+  // the search starts scoped to what the user is looking at and only widens
+  // from there.
+  const where = (hit) => [hit.sequence, hit.channel].filter(Boolean).join(" · ");
+  const land = (stem, hit, note = "") => {
+    store.setFrame(hit.index);
+    const at = where(hit);
+    $("#status").textContent =
+      `${stem} → frame ${hit.index}${at ? ` (${at})` : ""}${note}`;
+  };
+  const jumpTo = async (raw) => {
+    const text = raw.trim();
+    if (!text) return;
+    const track = store.getTrack();
+    const range = store.getRange();
+    const numeric = /^\d+$/.test(text);
+
+    // No channel track and a bare number: that is a frame index.
+    if (!track && numeric) {
+      const [lo, hi] = bounds();
+      store.setFrame(Math.max(lo, Math.min(Number(text), hi)));
+      return;
+    }
+    // Track loaded: its stems are already here, match them without a request
+    // (and accept 850 for 000850 -- nobody types the padding).
+    const p = positions();
+    if (p && p.stems) {
+      const k = p.stems.findIndex((s) => s === text ||
+        (numeric && /^\d+$/.test(s) && Number(s) === Number(text)));
+      if (k >= 0) {
+        store.setFrame(p.indices[k]);
+        $("#status").textContent =
+          `${track.channel} ${p.stems[k]} → frame ${p.indices[k]}`;
+        return;
+      }
+    }
+
+    const nodeId = (track && track.nodeId) || store.getSelected();
+    if (!nodeId) return;
+    const channel = track ? track.channel : undefined;
+    const stems = numeric && text.length < 6
+      ? [text.padStart(6, "0"), text] : [text];
+    try {
+      for (const stem of stems) {
+        // 1. Exactly what is on screen: this channel, this sequence.
+        let { matches } = await store.locate(
+          nodeId, stem, { channel, sequence: range && range.label });
+        if (matches.length) return land(stem, matches[0]);
+        // 2. Same channel, another sequence. The sequence restriction would
+        //    clamp the jump straight back, so drop it and say so.
+        ({ matches } = await store.locate(nodeId, stem, { channel }));
+        if (matches.length) {
+          store.setRange(null);
+          return land(stem, matches[0], " — sequence restriction cleared");
+        }
+        // 3. Anywhere: report where it lives, but do not drag the slider off
+        //    the channel timeline it is walking.
+        ({ matches } = await store.locate(nodeId, stem, {}));
+        if (matches.length) {
+          $("#status").textContent =
+            `'${stem}' is not on ${channel ?? "this timeline"} — ` +
+            `it exists as ${where(matches[0])}`;
+          return;
+        }
+      }
+    } catch (err) {
+      $("#status").textContent = String(err);
+      return;
+    }
+    $("#status").textContent = `no frame named '${text}' in this dataset`;
+  };
+  gotoInput.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    jumpTo(gotoInput.value);
+  });
+
   // Frame changes can come from panels too (a series chart click): keep the
   // slider in sync, not only the other way around.
   store.onFrame(paint);
   store.onRange(() => {
+    posCache = null;
     const [lo, hi] = bounds();
     store.setFrame(Math.max(lo, Math.min(store.getFrame(), hi)));
     paint();
   });
   store.onTrack(() => {
+    posCache = null;
     // Snap the current frame onto the track so panels show a real event.
-    const idxs = positions();
-    if (idxs && idxs.length) store.setFrame(idxs[floorPos(idxs, store.getFrame())]);
+    const p = positions();
+    if (p && p.indices.length) {
+      store.setFrame(p.indices[floorPos(p.indices, store.getFrame())]);
+    }
     paint();
   });
   paint();
@@ -213,11 +359,18 @@ async function init() {
     manager.add(dataSpec({ nodeId, nodeLabel, channel, len }), first);
   };
 
-  const openSeries = (nodeId, nodeLabel, channel, len) => {
+  const openSeries = (nodeId, nodeLabel, channel, len, shape) => {
     const key = `series:${nodeId}:${channel}`;
     if (manager.byKey(key)) return;
     slider.bump(len ?? 1);
-    manager.add(seriesSpec({ nodeId, nodeLabel, channel, len }), true);
+    manager.add(seriesSpec({ nodeId, nodeLabel, channel, len, shape }), true);
+  };
+
+  const openEntries = (nodeId, nodeLabel, channel, len) => {
+    const key = `entries:${nodeId}:${channel}`;
+    if (manager.byKey(key)) return;
+    slider.bump(len ?? 1);
+    manager.add(entriesSpec({ nodeId, nodeLabel, channel, len }), true);
   };
 
   const openTry = (binding) => {
@@ -231,10 +384,13 @@ async function init() {
   // Panel factory -- used both for the default layout and for restores.
   const make = (key, binding) => {
     if (key === "pipeline") return pipelineSpec(svg);
-    if (key === "inspector") return inspectorSpec(openData, openSeries);
+    if (key === "inspector") return inspectorSpec(openData, openSeries, openEntries);
     if (key === "metrics") return metricsSpec();
     if (key === "catalog") return catalogSpec(openTry);
-    const specFor = { "data:": dataSpec, "try:": trySpec, "series:": seriesSpec };
+    const specFor = {
+      "data:": dataSpec, "try:": trySpec, "series:": seriesSpec,
+      "entries:": entriesSpec,
+    };
     const prefix = key && Object.keys(specFor).find((p) => key.startsWith(p));
     if (prefix && binding) {
       if (!svg.querySelector(`[data-node="${binding.nodeId}"]`)) return null;
