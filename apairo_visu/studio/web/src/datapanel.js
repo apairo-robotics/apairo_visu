@@ -21,6 +21,96 @@ export const el = (tag, cls, text) => {
 const accent = () => getComputedStyle(document.documentElement).getPropertyValue("--accent");
 const muted = () => getComputedStyle(document.documentElement).getPropertyValue("--muted");
 
+/* ------------------------------------------------------- view settings */
+// How clouds are *looked at* -- background, point shape and size, ground
+// grid, camera style. Shared by every cloud panel and remembered across
+// sessions, because it is a property of the viewer's eyes, not of one
+// channel: setting a readable background once should not have to be redone
+// for the next panel.
+
+const VIEW_KEY = "studio.view";
+const VIEW_DEFAULTS = {
+  background: "auto", // "auto" tracks the page theme; else a #rrggbb
+  round: true,
+  attenuate: false,   // point size in metres (shrinks with distance) vs pixels
+  size: 2,
+  controls: "trackball",
+  grid: true,
+};
+
+export const viewSettings = { ...VIEW_DEFAULTS };
+try {
+  Object.assign(viewSettings, JSON.parse(localStorage.getItem(VIEW_KEY) || "{}"));
+  // Point size used to live on its own key; carry it over rather than
+  // silently resetting a size the user had already dialled in.
+  const legacy = Number(localStorage.getItem("studio.ptsize"));
+  if (!localStorage.getItem(VIEW_KEY) && legacy > 0) viewSettings.size = legacy;
+} catch { /* corrupt entry: the defaults stand */ }
+
+const viewListeners = new Set();
+
+export function onViewSettings(fn) {
+  viewListeners.add(fn);
+  return () => viewListeners.delete(fn);
+}
+
+export function setViewSettings(patch) {
+  Object.assign(viewSettings, patch);
+  try {
+    localStorage.setItem(VIEW_KEY, JSON.stringify(viewSettings));
+  } catch { /* private mode: the session still honours the change */ }
+  for (const fn of viewListeners) fn(viewSettings);
+}
+
+// A near-black stage under a light UI is what makes a viridis cloud hard to
+// read: dark points on a dark plane. Following the page theme keeps the
+// contrast the colormap was designed for, whichever theme is on.
+function themeBackground() {
+  const set = document.documentElement.dataset.theme;
+  const dark = set === "dark"
+    || (!set && window.matchMedia("(prefers-color-scheme: dark)").matches);
+  return dark ? "#14161c" : "#e6eaf1";
+}
+
+export const backgroundColor = () =>
+  (viewSettings.background === "auto" ? themeBackground() : viewSettings.background);
+
+// Push the current settings onto a viewer. Re-applied after every setCloud:
+// the engine rebuilds the ground grid with the cloud, so a hidden grid would
+// reappear on the next frame otherwise.
+function applyViewSettings(viewer) {
+  viewer.setBackground(Number.parseInt(backgroundColor().slice(1), 16));
+  viewer.setRound(viewSettings.round);
+  viewer.setSizeAttenuation(viewSettings.attenuate);
+  viewer.setPointSize(viewSettings.size);
+  viewer.setControlStyle(viewSettings.controls);
+  // Reaching for the overlay: the shared engine exposes no grid controls, so
+  // drive its uniforms from here. All of it optional -- a future engine
+  // without a ReferenceGrid simply ignores us rather than throwing.
+  const mesh = viewer.grid && viewer.grid.mesh;
+  if (mesh) {
+    mesh.visible = viewSettings.grid;
+    // The engine's grid is tuned for its dark stage; left as-is on a light
+    // background those near-navy lines dominate the cloud they exist to
+    // give depth to. Pick the pair that reads as "quiet floor" either way.
+    const u = mesh.material && mesh.material.uniforms;
+    if (u) {
+      const light = isLight(backgroundColor());
+      u.uMinorColor.value.set(light ? 0xb9c1ce : 0x333c4d);
+      u.uMajorColor.value.set(light ? 0x93a0b4 : 0x5a6478);
+      u.uOpacity.value = light ? 0.5 : 0.35;
+    }
+  }
+  viewer.requestRender();
+}
+
+// Perceived lightness of a #rrggbb, the cheap Rec.601 way.
+function isLight(hex) {
+  const v = Number.parseInt(hex.slice(1), 16);
+  const r = (v >> 16) & 255, g = (v >> 8) & 255, b = v & 255;
+  return 0.299 * r + 0.587 * g + 0.114 * b > 140;
+}
+
 /* ------------------------------------------------------------- pipeline */
 
 // Adopts the server-rendered SVG (SSR-lite), binds pan/zoom and node clicks.
@@ -278,12 +368,8 @@ export function dataSpec(binding) {
       const colorSel = el("select", "chan-color");
       const bgrBtn = el("button", "tbtn", localStorage.getItem("studio.bgr") === "1" ? "BGR" : "RGB");
       bgrBtn.title = "Swap the red and blue channels (rosbag images are BGR)";
-      const sizeInput = el("input", "opt-input frame-input");
-      sizeInput.type = "number";
-      sizeInput.min = "0.5";
-      sizeInput.step = "0.5";
-      sizeInput.value = localStorage.getItem("studio.ptsize") || "2";
-      sizeInput.title = "Point size (px)";
+      const gearBtn = el("button", "tbtn", "view");
+      gearBtn.title = "Background, point shape and size, grid, camera";
       // This panel's frame, counted in ITS channel's own frames rather than
       // in the interleaved global index: a lidar panel sits at "lidar
       // 000850", and 000850 is the number a label file is named after. The
@@ -323,7 +409,96 @@ export function dataSpec(binding) {
         });
       });
       panel.controls.append(
-        modeSel, colorSel, bgrBtn, sizeInput, frameInput, syncLabel, tryBtn);
+        modeSel, colorSel, bgrBtn, gearBtn, frameInput, syncLabel, tryBtn);
+
+      // View settings, as a popover over the stage rather than yet more
+      // header controls: they are set once and then left alone, unlike the
+      // frame and the colour, which are handled every few seconds.
+      const settings = el("div", "settings-pop");
+      settings.hidden = true;
+      panel.body.appendChild(settings);
+      const only3d = [];
+
+      const optRow = (label, control) => {
+        const row = el("label", "opt");
+        row.append(el("span", null, label), control);
+        settings.appendChild(row);
+        return control;
+      };
+      const check = (label, key, onChange) => {
+        const box = el("input");
+        box.type = "checkbox";
+        box.checked = Boolean(viewSettings[key]);
+        box.addEventListener("change", () => {
+          setViewSettings({ [key]: box.checked });
+          if (onChange) onChange();
+        });
+        return optRow(label, box);
+      };
+
+      const sizeInput = el("input", "opt-input");
+      sizeInput.type = "number";
+      sizeInput.min = "0.5";
+      sizeInput.step = "0.5";
+      sizeInput.value = String(viewSettings.size);
+      optRow("point size", sizeInput);
+      sizeInput.addEventListener("change", () => {
+        setViewSettings({ size: Math.max(0.1, Number(sizeInput.value) || 1) });
+        drawAs(currentKind()); // the BEV draws its own points
+      });
+
+      only3d.push(check("round points", "round").closest(".opt"));
+      only3d.push(check("size in metres", "attenuate").closest(".opt"));
+      only3d.push(check("ground grid", "grid").closest(".opt"));
+
+      const bgAuto = el("input");
+      bgAuto.type = "checkbox";
+      bgAuto.checked = viewSettings.background === "auto";
+      const bgColor = el("input");
+      bgColor.type = "color";
+      bgColor.value = backgroundColor();
+      bgColor.disabled = bgAuto.checked;
+      const bgWrap = el("span", "opt-pair");
+      bgWrap.append(bgAuto, el("span", "opt-hint", "theme"), bgColor);
+      only3d.push(optRow("background", bgWrap).closest(".opt"));
+      bgAuto.addEventListener("change", () => {
+        bgColor.disabled = bgAuto.checked;
+        setViewSettings({ background: bgAuto.checked ? "auto" : bgColor.value });
+        bgColor.value = backgroundColor();
+      });
+      bgColor.addEventListener("input", () =>
+        setViewSettings({ background: bgColor.value }));
+
+      const camSel = el("select", "chan-color");
+      fillSelect(camSel, [["trackball", "trackball (free)"], ["orbit", "orbit (upright)"]]);
+      camSel.value = viewSettings.controls;
+      camSel.addEventListener("change", () => setViewSettings({ controls: camSel.value }));
+      only3d.push(optRow("camera", camSel).closest(".opt"));
+
+      const recenter = el("button", "tbtn", "frame cloud");
+      recenter.title = "Bring the camera back onto the cloud";
+      recenter.addEventListener("click", () => { if (v3d) v3d.viewer.frame(); });
+      only3d.push(optRow("recenter", recenter).closest(".opt"));
+
+      const paintSettings = () => {
+        const is3d = currentKind() === "cloud3d";
+        for (const row of only3d) row.hidden = !is3d;
+        sizeInput.value = String(viewSettings.size);
+        bgAuto.checked = viewSettings.background === "auto";
+        bgColor.disabled = bgAuto.checked;
+        bgColor.value = backgroundColor();
+        camSel.value = viewSettings.controls;
+      };
+      gearBtn.addEventListener("click", () => {
+        settings.hidden = !settings.hidden;
+        gearBtn.classList.toggle("primed", !settings.hidden);
+        if (!settings.hidden) paintSettings();
+      });
+      // Another panel (or the theme toggle) changed the settings: follow.
+      const offView = onViewSettings(() => {
+        if (v3d) applyViewSettings(v3d.viewer);
+        if (!settings.hidden) paintSettings();
+      });
 
       let arr = null;
       // Channels of the current sample: the color select offers per-point
@@ -536,7 +711,7 @@ export function dataSpec(binding) {
         // each hold a viewer, so gate them on the focused one (the hook the
         // engine documents for multi-viewer hosts).
         viewer.flyGate = hasKeys;
-        viewer.setBackground(0x14161c);
+        applyViewSettings(viewer);
         v3d = { host, viewer, framed: false };
         return v3d;
       };
@@ -580,7 +755,8 @@ export function dataSpec(binding) {
         stage.replaceChildren();
         foot.textContent = "";
         colorSel.hidden = kind !== "cloud" && kind !== "cloud3d";
-        sizeInput.hidden = kind !== "cloud" && kind !== "cloud3d";
+        gearBtn.hidden = kind !== "cloud" && kind !== "cloud3d";
+        if (gearBtn.hidden) { settings.hidden = true; gearBtn.classList.remove("primed"); }
         bgrBtn.hidden = kind !== "image";
         if (!arr) { stage.appendChild(el("div", "placeholder", "no data")); return; }
         if (arr.repr !== undefined) { stage.appendChild(el("div", "chan-values", arr.repr)); return; }
@@ -589,9 +765,11 @@ export function dataSpec(binding) {
             const inst = ensure3d();
             stage.appendChild(inst.host);
             inst.viewer.resize(); // the host just got its size from the stage
-            inst.viewer.setPointSize(Number(sizeInput.value) || 2);
             const spec = colorSpec();
             const k = feedCloud3d(inst.viewer, arr, spec);
+            // After setCloud, not before: it rebuilds the ground grid, which
+            // would come back visible on every frame otherwise.
+            applyViewSettings(inst.viewer);
             if (!inst.framed && k > 0) { inst.framed = true; inst.viewer.frame(); }
             // Frame slider paused → octree for exact-fast picking + LOD cut.
             if (v3dTimer) clearTimeout(v3dTimer);
@@ -605,7 +783,7 @@ export function dataSpec(binding) {
             stage.appendChild(canvas);
             const spec = colorSpec();
             const redraw = () =>
-              drawCloud(canvas, arr, spec, bevView, Number(sizeInput.value) || 1.7);
+              drawCloud(canvas, arr, spec, bevView, viewSettings.size);
             redraw();
             bindViewport(canvas, {
               fit: () => cloudFit(arr, canvas.width, canvas.height),
@@ -756,10 +934,6 @@ export function dataSpec(binding) {
         bgrBtn.textContent = bgr ? "BGR" : "RGB";
         drawAs(currentKind());
       });
-      sizeInput.addEventListener("change", () => {
-        localStorage.setItem("studio.ptsize", sizeInput.value);
-        drawAs(currentKind());
-      });
       // Land on a global frame index: shared when synced (the topbar and
       // every other synced panel move with it), private otherwise.
       const goTo = (target) => {
@@ -841,6 +1015,7 @@ export function dataSpec(binding) {
       panel.onRemove = () => {
         offFrame();
         offFocus();
+        offView();
         if (hasKeys()) store.setFocused(null);
         window.removeEventListener("keydown", onArrowKey);
         stageObserver.disconnect();

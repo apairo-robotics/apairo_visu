@@ -5,7 +5,9 @@
 // sample cache) and dock/drag like projector's views.
 
 import { catalogSpec, trySpec } from "./catalogpanel.js";
-import { dataSpec, el, inspectorSpec, metricsSpec, pipelineSpec } from "./datapanel.js";
+import {
+  dataSpec, el, inspectorSpec, metricsSpec, pipelineSpec, setViewSettings,
+} from "./datapanel.js";
 import { entriesSpec } from "./entriespanel.js";
 import { seriesSpec } from "./seriespanel.js";
 import { PanelManager, fillSelect } from "./panels.js";
@@ -27,6 +29,9 @@ function initTheme() {
     else document.documentElement.dataset.theme = mode;
     btn.textContent = mode;
     localStorage.setItem("studio.theme", mode);
+    // 3D stages default their background to "follow the theme": nudge them
+    // so a theme switch does not leave a black box under a light page.
+    setViewSettings({});
   };
   btn.addEventListener("click", () => {
     mode = modes[(modes.indexOf(mode) + 1) % modes.length];

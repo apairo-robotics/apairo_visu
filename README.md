@@ -178,7 +178,16 @@ Shipped so far:
   keys act on the **clicked** panel, not the hovered one: click a panel to
   give it the keys and it keeps them, outlined in the accent colour, until
   another panel is clicked -- so the pointer is free to reach a control or
-  another panel mid-gesture. The BEV stays one select away. The **BEV
+  another panel mid-gesture. The BEV stays one select away. A **view**
+  popover carries the display settings, shared by every cloud panel and
+  remembered across sessions -- they say how you want to *look* at clouds,
+  not something about one channel: **background** (following the page theme
+  by default, so a viridis cloud is never dark-on-dark under a light UI, or
+  any colour you pick), **point shape** round or square, **point size** in
+  pixels or in **metres** (attenuated with distance), the **ground grid** on
+  or off with its lines re-tinted to whatever background is in play, the
+  **camera style** (free trackball or upright orbit), and a **frame cloud**
+  button for when you have flown off into the void. The **BEV
   zooms**: scroll to zoom at the cursor, drag a box to zoom on a selection,
   shift-drag to pan, double-click to reset. **Images and rasters zoom the
   same way** (scroll at the cursor, drag to pan, double-click to reset):
@@ -187,8 +196,9 @@ Shipped so far:
   real pixels, not an upscaled thumbnail. Clouds color by any of their own columns **or by a
   per-point sibling channel**: pick `color: labels` and the cloud renders
   as a labeled point cloud (categorical palette for integer labels, viridis
-  for continuous channels), in both BEV and 3D. A point-size control drives
-  both renderers; images get an R/B swap toggle (rosbag frames are BGR).
+  for continuous channels), in both BEV and 3D. The view popover's point
+  size drives both renderers; images get an R/B swap toggle (rosbag frames
+  are BGR).
   Each panel also carries its **own frame input**, counted in **its
   channel's own frames** -- a lidar panel sits at `lidar 000850`, not at
   the interleaved global index that no label file is named after (and that

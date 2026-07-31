@@ -64,22 +64,36 @@ body {
   -webkit-font-smoothing: antialiased; overflow: hidden;
 }
 
-#app { display: grid; grid-template-rows: 46px 1fr; height: 100vh; gap: 8px; padding: 8px; }
+/* minmax(0, 1fr), not the implicit `auto` column: an auto track takes the
+   min-content width of its widest item as its floor, so the topbar's
+   controls -- or a row of docked panels -- would push the whole shell wider
+   than the window and carry their close buttons out of reach. */
+#app {
+  display: grid; grid-template-rows: 46px 1fr; grid-template-columns: minmax(0, 1fr);
+  height: 100vh; gap: 8px; padding: 8px;
+}
 
 /* ------------------------------------------------------------- top bar */
 .topbar {
   display: flex; align-items: center; gap: 14px; padding: 0 14px;
   background: var(--panel); border: 1px solid var(--line-strong); border-radius: 6px;
+  min-width: 0; overflow: hidden;
 }
 .brand {
-  display: flex; align-items: center; gap: 9px;
+  display: flex; align-items: center; gap: 9px; flex: 0 0 auto;
   font-weight: 700; letter-spacing: 1.8px; text-transform: uppercase; font-size: 13px;
 }
 .brand .b1, .brand .b2 { fill: var(--accent); opacity: 0.9; }
 .brand .b3 { fill: none; stroke: var(--accent); stroke-width: 1.6; }
 .brand .e { stroke: var(--muted); stroke-width: 1.3; }
-.status { color: var(--muted); font-family: var(--mono); font-size: 11px; }
-.spacer { flex: 1; }
+/* The status line is what gives way when the window narrows: everything
+   else in the bar is a control you need to reach. */
+.status {
+  color: var(--muted); font-family: var(--mono); font-size: 11px;
+  flex: 0 1 auto; min-width: 0; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+.spacer { flex: 1 1 0; min-width: 0; }
 button.ghost {
   background: none; border: 1px solid var(--line-strong); border-radius: 5px;
   color: var(--muted); font: 11px var(--mono); padding: 4px 10px; cursor: pointer;
@@ -87,8 +101,17 @@ button.ghost {
 button.ghost:hover, button.ghost:focus-visible { color: var(--text); border-color: var(--accent); outline: none; }
 
 /* ------------------------------------------------------ panel workbench */
-#main { display: flex; min-height: 0; position: relative; }
-#stack { flex: 1; display: flex; min-height: 0; min-width: 0; }
+/* min-width: 0 is load-bearing. #main is a grid item, whose automatic
+   minimum size is its min-content width -- the sum of every docked column's
+   minimum. Without this it inflates past the viewport as soon as a panel is
+   docked to the right, carrying that panel's close button off-screen where
+   nothing can reach it. #stack then scrolls horizontally rather than push
+   content out of the window when the columns genuinely cannot fit. */
+#main { display: flex; min-height: 0; min-width: 0; position: relative; }
+#stack {
+  flex: 1; display: flex; min-height: 0; min-width: 0;
+  overflow: auto hidden;
+}
 #graph-ssr { position: absolute; inset: 0; background: var(--canvas); border-radius: 6px; }
 #graph-ssr svg { width: 100%; height: 100%; display: block; }
 #stack:not(:empty) + #graph-ssr { display: none; }
@@ -108,21 +131,32 @@ button.ghost:hover, button.ghost:focus-visible { color: var(--text); border-colo
    answer to "where will my keys land". */
 .vpanel.focused { border-color: var(--accent); }
 .vpanel.focused > .vpanel-head { border-bottom-color: var(--accent); }
+/* Wraps rather than clips: the panel hides its overflow, so a header too
+   wide for a narrow panel would cut off the controls -- and the close
+   button with them, which is exactly what you reach for when a panel is
+   too narrow. Controls flow onto a second line instead, and the close
+   button is anchored top-right (below) so wrapping can never carry it
+   away. */
 .vpanel-head {
-  display: flex; align-items: center; gap: 8px; padding: 5px 10px;
+  display: flex; align-items: center; gap: 8px; padding: 5px 28px 5px 10px;
   border-bottom: 1px solid var(--line); user-select: none; flex: 0 0 auto;
+  flex-wrap: wrap; row-gap: 4px; min-width: 0; position: relative;
 }
+.vpanel-head > .tbtn { position: absolute; top: 3px; right: 4px; }
 .vpanel-tag {
   font: 9px var(--mono); letter-spacing: 1px; color: var(--accent);
   border: 1px solid var(--line-strong); border-radius: 999px; padding: 1px 7px;
 }
 .vpanel-title {
   font: 600 12px var(--mono); overflow: hidden; text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: nowrap; flex: 0 1 auto; min-width: 0;
 }
-.vpanel-controls { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+.vpanel-controls {
+  display: flex; align-items: center; gap: 6px; margin-left: auto;
+  flex-wrap: wrap; row-gap: 4px; justify-content: flex-end; min-width: 0;
+}
 .vpanel-body { flex: 1; min-height: 0; position: relative; overflow: hidden; }
-.vpanel-body.scroll-body { overflow-y: auto; padding: 12px 14px; }
+.vpanel-body.scroll-body { overflow: auto; padding: 12px 14px; }
 .vpanel-body.graph-body { background: var(--canvas); }
 .vpanel-body.graph-body svg { width: 100%; height: 100%; display: block; cursor: grab; }
 .vpanel-body.graph-body svg:active { cursor: grabbing; }
@@ -185,6 +219,26 @@ button.ghost:hover, button.ghost:focus-visible { color: var(--text); border-colo
   border-radius: 4px; font: 11px var(--mono); padding: 3px 6px; width: 100%;
   min-width: 0;
 }
+/* Cloud view settings: a popover over the stage, not more header controls.
+   These are set once and then left alone, unlike the frame and the colour. */
+.settings-pop {
+  position: absolute; top: 8px; right: 10px; z-index: 6;
+  display: flex; flex-direction: column; gap: 7px;
+  background: var(--panel); border: 1px solid var(--line-strong);
+  border-radius: 6px; padding: 10px 12px; min-width: 210px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 22%);
+}
+.settings-pop .opt span { flex: 0 0 96px; }
+.settings-pop .opt-input, .settings-pop select { flex: 1; min-width: 0; }
+.settings-pop input[type="checkbox"] { accent-color: var(--accent); margin: 0; }
+.settings-pop .opt-pair { display: flex; align-items: center; gap: 6px; }
+.settings-pop .opt-hint { flex: 0 0 auto; }
+.settings-pop input[type="color"] {
+  width: 32px; height: 20px; padding: 0; cursor: pointer;
+  border: 1px solid var(--line-strong); border-radius: 4px; background: none;
+}
+.settings-pop input[type="color"]:disabled { opacity: 0.4; cursor: default; }
+
 .cat-actions { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
 .cat-actions select { flex: 1; min-width: 0; }
 
@@ -213,7 +267,9 @@ button.ghost:hover, button.ghost:focus-visible { color: var(--text); border-colo
 }
 pre.snippet { margin-top: 8px; max-height: 20vh; }
 
-.frame-box { display: flex; align-items: center; gap: 8px; flex: 0 1 460px; }
+.frame-box {
+  display: flex; align-items: center; gap: 8px; flex: 0 1 460px; min-width: 0;
+}
 .frame-box input[type="range"] { flex: 1; accent-color: var(--accent); min-width: 80px; }
 .goto-input {
   background: none; border: 1px solid var(--line-strong); border-radius: 5px;
@@ -258,7 +314,10 @@ table.kv th { color: var(--muted); font-weight: 500; white-space: nowrap; }
 table.kv tr:last-child td, table.kv tr:last-child th { border-bottom: none; }
 td.num { font-variant-numeric: tabular-nums; }
 
-/* Channel listing: every row is a seek, the current frame is marked. */
+/* Channel listing: every row is a seek, the current frame is marked. Cells
+   never break -- a file name split over three lines is unreadable; the body
+   scrolls sideways instead when the panel is too narrow. */
+table.entries td, table.entries th { white-space: nowrap; }
 table.entries tr:not(:first-child) { cursor: pointer; }
 table.entries tr:not(:first-child):hover td { background: var(--line); }
 table.entries tr.at-frame td { color: var(--accent); font-weight: 600; }
