@@ -547,6 +547,30 @@ def test_entries_list_what_a_channel_holds(tmp_path):
     assert [e["file"] for e in seq_b] == ["000000.npy", "000001.npy"]
 
 
+def test_entries_names_the_file_of_a_single_array_channel(tmp_path):
+    """A channel stored as ONE array still comes from a file, and the
+    listing must say which -- 'no file' would read as 'this frame has no
+    home on disk'. The manifests sitting next to it are not candidates."""
+    import apairo
+
+    root = _kitti_root(tmp_path)
+    imu = root / "seq_a" / "imu"
+    imu.mkdir()
+    np.save(imu / "imu.npy", np.zeros((4, 6), dtype=np.float64))
+    (imu / "timestamps.txt").write_text("".join(f"{0.1 * i}\n" for i in range(4)))
+    (imu / "metadata.yaml").write_text("frame: imu_link\n")  # a sidecar, not data
+
+    reg = StudioRegistry([apairo.RawDataset(str(root))])
+    listing = reg.entries(reg.spec.nodes[0].id, "imu")
+    first = listing["entries"][0]
+    assert first["file"] == "imu.npy"
+    assert first["shared"] is True          # the same file backs every row
+    assert first["bytes"] == 6 * 8          # that row's own bytes, not the array's
+    # Per-frame channels of the same dataset stay unflagged.
+    lidar = reg.entries(reg.spec.nodes[0].id, "lidar")["entries"][0]
+    assert lidar["file"] == "000000.npy" and "shared" not in lidar
+
+
 def test_entries_pages_and_filters_by_sequence(tmp_path):
     import apairo
 

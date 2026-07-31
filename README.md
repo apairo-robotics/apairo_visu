@@ -272,7 +272,12 @@ Shipped so far:
 - **Channel listing** -- "list" on any inspector channel row opens the
   channel's **contents**, one row per frame: channel row, the on-disk file
   backing it, the global frame index, the time since the channel's first
-  frame, and the file size. That is the view that answers "which frames
+  frame, and the size. Every channel names a file, whichever way it is
+  stored: one file per frame (`000850.npy`) for a per-frame layout, or the
+  single array the whole channel lives in (`imu_odometry.npy`, flagged *one
+  file for every row*, sized by that row's own bytes) -- an unnamed frame
+  would read as one with no home on disk. That is the view that answers
+  "which frames
   have I already labelled and which are left" -- a `ground_truth` listing
   is exactly the label set. Filter by sequence, page through with
   prev/next, jump to a stem with *find*, page to wherever the timeline sits

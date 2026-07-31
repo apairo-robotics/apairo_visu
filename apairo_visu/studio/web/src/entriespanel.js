@@ -82,10 +82,15 @@ export function entriesSpec(binding) {
           table.appendChild(tr);
         }
         host.replaceChildren(table);
+        // A channel stored as one array (the npy loader) names the same file
+        // on every row: say so, or the column reads as one file per frame.
+        const shared = page.entries.length && page.entries[0].shared
+          ? " · one file for every row" : "";
         head.textContent =
           `${channel} · ${page.total} frames` +
           (sequence() ? ` in ${sequence()}` : "") +
-          ` · showing ${page.start}–${Math.max(page.start, page.stop - 1)}`;
+          ` · showing ${page.start}–${Math.max(page.start, page.stop - 1)}` +
+          shared;
         prevBtn.disabled = page.start <= 0;
         nextBtn.disabled = page.stop >= page.total;
       };

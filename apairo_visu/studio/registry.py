@@ -43,6 +43,20 @@ def _timestamp_of(sample) -> float | None:
         return None
 
 
+def _is_sidecar(name: str) -> bool:
+    """Is this a channel directory's bookkeeping rather than its data?
+
+    A channel folder holds its frames next to a clock (``timestamps.txt``)
+    and its manifests. Only what is left over is the data, which is how a
+    single-array channel's one file gets identified by elimination.
+    """
+    return (
+        name.startswith(".")
+        or name == "timestamps.txt"
+        or name.rsplit(".", 1)[-1].lower() in {"yaml", "yml", "json"}
+    )
+
+
 def _doc_of(obj) -> str | None:
     doc = inspect.getdoc(obj)
     if doc is None and not inspect.isfunction(obj):
@@ -70,6 +84,7 @@ class StudioRegistry:
         self._channel_cache: dict[str, list[dict]] = {}
         self._track_cache: dict[tuple[str, str], dict] = {}
         self._stems_cache: dict[str, np.ndarray | None] = {}
+        self._file_cache: dict[tuple[str, str], str | None] = {}
 
     # ------------------------------------------------------------- queries
 
@@ -381,9 +396,11 @@ class StudioRegistry:
                 entry["row"] = None if row is None else int(row)
                 owner = self._owner(ds, entry["sequence"])
                 if owner is not None and entry["row"] is not None:
-                    name, size = self._file_of(owner, channel, entry["row"])
+                    name, size, shared = self._file_of(owner, channel, entry["row"])
                     entry["file"] = name
                     entry["bytes"] = size
+                    if shared:
+                        entry["shared"] = True
                     entry["timestamp"] = self._stamp_of(owner, channel, entry["row"])
             except Exception:
                 pass
@@ -413,21 +430,62 @@ class StudioRegistry:
                 return sub
         return None
 
-    @staticmethod
-    def _file_of(owner, channel: str, row: int) -> tuple[str | None, int | None]:
-        """``(filename, size)`` backing one row of a channel (``None`` if it
-        cannot be named -- a view, a single-array loader, a zarr store)."""
+    def _file_of(self, owner, channel: str, row: int) -> tuple:
+        """``(filename, bytes, shared)`` backing one row of a channel.
+
+        Two on-disk shapes, and both deserve a name. A per-frame loader
+        (``npys``, ``bin``, images) gives one file per row and its size on
+        disk. A single-array loader (``npy``: one file holding the whole
+        channel) gives that one file for every row, flagged *shared*, with
+        the row's own byte count rather than the whole array's -- saying
+        "no file" there would read as "this frame has no home on disk",
+        which is exactly wrong. ``(None, None, False)`` when nothing can be
+        named at all: a view, a zarr store, a transform node.
+        """
         loader = (getattr(owner, "loaders", None) or {}).get(channel)
         files = getattr(loader, "files", None)
         directory = getattr(loader, "directory", None)
-        if not files or directory is None or not 0 <= row < len(files):
-            return None, None
-        name = str(files[row])
+        if files and directory is not None and 0 <= row < len(files):
+            name = str(files[row])
+            try:
+                return name, os.stat(os.path.join(str(directory), name)).st_size, False
+            except OSError:
+                return name, None, False
+
+        name = self._channel_file(owner, channel)
+        if name is None:
+            return None, None, False
+        array = getattr(loader, "array", None)
         try:
-            size = os.stat(os.path.join(str(directory), name)).st_size
-        except OSError:
-            return name, None
-        return name, size
+            size = int(array[row].nbytes) if array is not None and row < len(array) else None
+        except Exception:
+            size = None
+        return name, size, True
+
+    def _channel_file(self, owner, channel: str) -> str | None:
+        """The lone data file of a channel directory, cached per channel.
+
+        Mirrors what the ``npy`` loader itself does -- it keeps the array
+        and forgets the path it came from, so the name has to be recovered
+        from the layout. ``None`` when the directory holds more than one
+        data file, since then no single name is *the* file.
+        """
+        key = (str(id(owner)), str(channel))
+        if key in self._file_cache:
+            return self._file_cache[key]
+        directory = (getattr(owner, "_files", None) or {}).get(channel)
+        name = None
+        if directory is not None:
+            try:
+                names = sorted(
+                    e.name for e in os.scandir(str(directory))
+                    if e.is_file() and not _is_sidecar(e.name)
+                )
+                name = names[0] if len(names) == 1 else None
+            except OSError:
+                name = None
+        self._file_cache[key] = name
+        return name
 
     @staticmethod
     def _stamp_of(owner, channel: str, row: int) -> float | None:
