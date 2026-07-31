@@ -181,9 +181,10 @@ Shipped so far:
   another panel mid-gesture. The BEV stays one select away. A **view**
   popover carries the display settings, shared by every cloud panel and
   remembered across sessions -- they say how you want to *look* at clouds,
-  not something about one channel: **background** (following the page theme
-  by default, so a viridis cloud is never dark-on-dark under a light UI, or
-  any colour you pick), **point shape** round or square, **point size** in
+  not something about one channel: **background** -- match the page theme
+  (the default, so a viridis cloud is never dark-on-dark under a light UI),
+  pin it to dark or light, or pick a colour -- **point shape** round or
+  square, **point size** in
   pixels or in **metres** (attenuated with distance), the **ground grid** on
   or off with its lines re-tinted to whatever background is in play, the
   **camera style** (free trackball or upright orbit), and a **frame cloud**

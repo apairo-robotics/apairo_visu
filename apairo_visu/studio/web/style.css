@@ -225,14 +225,15 @@ button.ghost:hover, button.ghost:focus-visible { color: var(--text); border-colo
   position: absolute; top: 8px; right: 10px; z-index: 6;
   display: flex; flex-direction: column; gap: 7px;
   background: var(--panel); border: 1px solid var(--line-strong);
-  border-radius: 6px; padding: 10px 12px; min-width: 210px;
+  border-radius: 6px; padding: 10px 12px; min-width: 244px;
   box-shadow: 0 8px 24px rgb(0 0 0 / 22%);
 }
 .settings-pop .opt span { flex: 0 0 96px; }
 .settings-pop .opt-input, .settings-pop select { flex: 1; min-width: 0; }
 .settings-pop input[type="checkbox"] { accent-color: var(--accent); margin: 0; }
-.settings-pop .opt-pair { display: flex; align-items: center; gap: 6px; }
-.settings-pop .opt-hint { flex: 0 0 auto; }
+.settings-pop .opt-pair {
+  display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0;
+}
 .settings-pop input[type="color"] {
   width: 32px; height: 20px; padding: 0; cursor: pointer;
   border: 1px solid var(--line-strong); border-radius: 4px; background: none;

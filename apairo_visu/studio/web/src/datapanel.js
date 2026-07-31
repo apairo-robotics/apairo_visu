@@ -29,8 +29,13 @@ const muted = () => getComputedStyle(document.documentElement).getPropertyValue(
 // for the next panel.
 
 const VIEW_KEY = "studio.view";
+// The two stage backgrounds worth naming: near-black for a dark page, a
+// pale slate for a light one. Anything else is a colour the user picked.
+const STAGE_DARK = "#14161c";
+const STAGE_LIGHT = "#e6eaf1";
 const VIEW_DEFAULTS = {
-  background: "auto", // "auto" tracks the page theme; else a #rrggbb
+  // "auto" tracks the page theme, "dark"/"light" pin one, else a #rrggbb.
+  background: "auto",
   round: true,
   attenuate: false,   // point size in metres (shrinks with distance) vs pixels
   size: 2,
@@ -69,11 +74,16 @@ function themeBackground() {
   const set = document.documentElement.dataset.theme;
   const dark = set === "dark"
     || (!set && window.matchMedia("(prefers-color-scheme: dark)").matches);
-  return dark ? "#14161c" : "#e6eaf1";
+  return dark ? STAGE_DARK : STAGE_LIGHT;
 }
 
-export const backgroundColor = () =>
-  (viewSettings.background === "auto" ? themeBackground() : viewSettings.background);
+export function backgroundColor() {
+  const choice = viewSettings.background;
+  if (choice === "auto") return themeBackground();
+  if (choice === "dark") return STAGE_DARK;
+  if (choice === "light") return STAGE_LIGHT;
+  return choice;
+}
 
 // Push the current settings onto a viewer. Re-applied after every setCloud:
 // the engine rebuilds the ground grid with the cloud, so a hidden grid would
@@ -451,23 +461,43 @@ export function dataSpec(binding) {
       only3d.push(check("size in metres", "attenuate").closest(".opt"));
       only3d.push(check("ground grid", "grid").closest(".opt"));
 
-      const bgAuto = el("input");
-      bgAuto.type = "checkbox";
-      bgAuto.checked = viewSettings.background === "auto";
+      // Named choices rather than a "use the theme" tickbox: that tickbox
+      // only gated the colour picker, and since the picker already held the
+      // theme's colour, toggling it changed precisely nothing on screen.
+      // Every option here says what it does and does it.
+      const bgSel = el("select", "chan-color");
+      fillSelect(bgSel, [
+        ["auto", "match page theme"],
+        ["dark", "dark"],
+        ["light", "light"],
+        ["custom", "custom colour"],
+      ]);
       const bgColor = el("input");
       bgColor.type = "color";
-      bgColor.value = backgroundColor();
-      bgColor.disabled = bgAuto.checked;
-      const bgWrap = el("span", "opt-pair");
-      bgWrap.append(bgAuto, el("span", "opt-hint", "theme"), bgColor);
-      only3d.push(optRow("background", bgWrap).closest(".opt"));
-      bgAuto.addEventListener("change", () => {
-        bgColor.disabled = bgAuto.checked;
-        setViewSettings({ background: bgAuto.checked ? "auto" : bgColor.value });
+      const bgChoice = () =>
+        (["auto", "dark", "light"].includes(viewSettings.background)
+          ? viewSettings.background : "custom");
+      const paintBackground = () => {
+        bgSel.value = bgChoice();
         bgColor.value = backgroundColor();
+        bgColor.disabled = bgSel.value !== "custom";
+      };
+      paintBackground();
+      const bgWrap = el("span", "opt-pair");
+      bgWrap.append(bgSel, bgColor);
+      only3d.push(optRow("background", bgWrap).closest(".opt"));
+      bgSel.addEventListener("change", () => {
+        // Entering "custom" keeps whatever is on screen as the starting
+        // colour, so the picker opens on the shade you are looking at.
+        setViewSettings({
+          background: bgSel.value === "custom" ? backgroundColor() : bgSel.value,
+        });
+        paintBackground();
       });
-      bgColor.addEventListener("input", () =>
-        setViewSettings({ background: bgColor.value }));
+      bgColor.addEventListener("input", () => {
+        setViewSettings({ background: bgColor.value });
+        paintBackground();
+      });
 
       const camSel = el("select", "chan-color");
       fillSelect(camSel, [["trackball", "trackball (free)"], ["orbit", "orbit (upright)"]]);
@@ -484,9 +514,7 @@ export function dataSpec(binding) {
         const is3d = currentKind() === "cloud3d";
         for (const row of only3d) row.hidden = !is3d;
         sizeInput.value = String(viewSettings.size);
-        bgAuto.checked = viewSettings.background === "auto";
-        bgColor.disabled = bgAuto.checked;
-        bgColor.value = backgroundColor();
+        paintBackground();
         camSel.value = viewSettings.controls;
       };
       gearBtn.addEventListener("click", () => {
