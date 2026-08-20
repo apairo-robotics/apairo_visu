@@ -191,8 +191,9 @@ Shipped so far:
   square, **point size** in
   pixels or in **metres** (attenuated with distance), the **ground grid** on
   or off with its lines re-tinted to whatever background is in play, the
-  **camera style** (free trackball or upright orbit), and a **frame cloud**
-  button for when you have flown off into the void. The **BEV
+  **camera style** (free trackball or upright orbit), a **frame cloud**
+  button for when you have flown off into the void, and the **voxel view**
+  described below. The **BEV
   zooms**: scroll to zoom at the cursor, drag a box to zoom on a selection,
   shift-drag to pan, double-click to reset. **Images and rasters zoom the
   same way** (scroll at the cursor, drag to pan, double-click to reset):
@@ -227,6 +228,28 @@ Shipped so far:
   histograms + stats. Per-point channels are stride-decimated above
   `max_points` (default 150k). Panels on the same node share one request
   per frame.
+- **Voxel view** -- what a `voxel_size` would do to the scan on screen,
+  before it is written into the recipe. Tick **voxels** in a 3D panel's view
+  popover and every cell the cloud occupies is drawn as a wireframe box, the
+  way toaster frames them. The cells sit on the absolute world grid
+  (`floor(x / size)`, the convention apairo's voxelisers use), so a cell drawn
+  here is the cell `VoxelisePointCloud` would build -- not one aligned to
+  wherever this particular scan happens to start. The cloud keeps its own
+  colouring underneath: the cage answers "how coarse is this grid here"
+  without taking away the colour that answers everything else. **One point per
+  cell** goes the last step and replaces the cloud with the cell centroids --
+  the cloud that would come out the other side, sitting inside its own cage
+  (colouring by a data channel, each centroid takes the **majority** colour of
+  its cell, which is what `VoxeliseLabels` does with the labels themselves).
+  The footer says it in numbers -- `voxels 0.5 m: 8467 cells over 19000 pts
+  (2.2 pts/cell, -55%)` -- which is the answer to "is 0.5 m too coarse here".
+  It is all cut in the browser from the points already on screen: nothing is
+  sent to the server and no pipeline is touched, so the reading is of the
+  *sample* when the scan was decimated to `max_points` (the footer says
+  `sampled pts`), and past 40k cells the cage stops being drawn -- it would be
+  a solid haze anyway -- and says so, while the counts stand. The settings
+  live with the other view settings: shared by every cloud panel and
+  remembered across sessions.
 - **Per-channel timeline** -- on asynchronous datasets the global slider
   walks the interleaved event timeline; the topbar channel select locks it
   to one channel's frames (lidar events only, camera events only). The

@@ -10,6 +10,7 @@ import {
   drawCloud, drawHist, drawSource, fmt, imageCanvas, previewKind,
   rasterCanvas, sourceFit, statsLine, uniqueCounts, valuesText,
 } from "./views.js";
+import { majorityColors, voxelize } from "./voxels.js";
 
 export const el = (tag, cls, text) => {
   const node = document.createElement(tag);
@@ -41,6 +42,11 @@ const VIEW_DEFAULTS = {
   size: 2,
   controls: "trackball",
   grid: true,
+  // Voxel overlay: the grid a `voxel_size` would cut this cloud into. Off by
+  // default -- it answers a question you ask now and then, not every frame.
+  voxels: false,
+  voxelSize: 0.5,     // metres, the edge of a cell
+  voxelReduce: false, // draw one centroid per cell: the voxelised cloud
 };
 
 export const viewSettings = { ...VIEW_DEFAULTS };
@@ -64,7 +70,11 @@ export function setViewSettings(patch) {
   try {
     localStorage.setItem(VIEW_KEY, JSON.stringify(viewSettings));
   } catch { /* private mode: the session still honours the change */ }
-  for (const fn of viewListeners) fn(viewSettings);
+  // Listeners get the patch as well as the state: most settings are pushed
+  // onto a live viewer, but a few (the voxel grid) are baked into the arrays
+  // the viewer was fed, so their panels must know to feed it again -- and
+  // only they, not every panel on every background tweak.
+  for (const fn of viewListeners) fn(viewSettings, patch);
 }
 
 // A near-black stage under a light UI is what makes a viridis cloud hard to
@@ -110,6 +120,16 @@ function applyViewSettings(viewer) {
       u.uMajorColor.value.set(light ? 0x93a0b4 : 0x5a6478);
       u.uOpacity.value = light ? 0.5 : 0.35;
     }
+  }
+  // Same reach-in for the voxel outlines: the engine paints them toaster-red
+  // at a fixed opacity, tuned for its own dark stage. On a pale background
+  // that same red at that same alpha is a haze over the cloud rather than a
+  // cage around it, so darken it and let it carry more weight.
+  const cage = viewer.voxelGrid && viewer.voxelGrid.material;
+  if (cage) {
+    const light = isLight(backgroundColor());
+    cage.color.set(light ? 0x8f2013 : 0xe10600);
+    cage.opacity = light ? 0.45 : 0.25;
   }
   viewer.requestRender();
 }
@@ -332,17 +352,26 @@ const VIEW_MODES = [
   ["raster", "raster"], ["hist", "histogram"], ["values", "values"],
 ];
 
+// How many cells still deserve an outline. Twelve edges each, merged by the
+// engine into one LineSegments: 40k cells is nearly a million line vertices
+// and some 11 MB of buffer, which still draws. Past that the cage is a solid
+// haze over the cloud anyway, and the honest answer is "raise the size".
+const MAX_OUTLINED_CELLS = 40000;
+
 // Feed an (N, C>=3) per-point array to the engine viewer: positions from
 // cols 0-2 (NaN rows dropped), colors from a cloudColorValues spec (own
 // column or a per-point label channel) — the same rules the 2D BEV uses.
 // Streaming options keep the camera and skip the octree; the caller frames
 // once and builds the octree when the frame slider pauses.
+// With the voxel view on, the same points are also cut into cells: every
+// occupied one gets outlined, and the cloud can be replaced by one centroid
+// per cell. Returns {points, vox, capped} — what ended up on screen, and what
+// it was cut into.
 function feedCloud3d(viewer, arr, spec) {
   const [n, stride] = arr.shape;
   const toColor = cloudColorMapper(spec);
   const pos = new Float32Array(n * 3);
   const rgb = new Float32Array(n * 3);
-  const alpha = new Float32Array(n).fill(1);
   let k = 0;
   for (let i = 0; i < n; i++) {
     const x = Number(arr.data[i * stride]);
@@ -354,9 +383,42 @@ function feedCloud3d(viewer, arr, spec) {
     rgb[k * 3] = c[0] / 255; rgb[k * 3 + 1] = c[1] / 255; rgb[k * 3 + 2] = c[2] / 255;
     k++;
   }
-  viewer.setCloud(pos.subarray(0, k * 3), { octree: false, frame: false });
-  viewer.setColors(rgb.subarray(0, k * 3), alpha.subarray(0, k));
-  return k;
+  let points = pos.subarray(0, k * 3);
+  let colors = rgb.subarray(0, k * 3);
+  // The voxel grid is cut here, over the very points on screen -- a stride
+  // decimated sample lands in fewer cells than the whole scan would, which is
+  // why the footer says when it is voxelising a sample.
+  const vox = viewSettings.voxels
+    ? voxelize(points, k, viewSettings.voxelSize)
+    : null;
+  if (vox && viewSettings.voxelReduce) {
+    // One centroid per cell: the cloud VoxelisePointCloud would hand on.
+    points = vox.centroids;
+    colors = majorityColors(vox, colors);
+  }
+  const drawn = points.length / 3;
+  viewer.setCloud(points, { octree: false, frame: false });
+  viewer.setColors(colors, new Float32Array(drawn).fill(1));
+  if (vox && vox.cells <= MAX_OUTLINED_CELLS) {
+    viewer.setVoxelGrid(vox.centers, vox.size);
+  } else {
+    viewer.clearVoxelGrid();
+  }
+  return { points: drawn, vox, capped: Boolean(vox) && vox.cells > MAX_OUTLINED_CELLS };
+}
+
+// What the voxel overlay is showing, said in the numbers the decision needs:
+// how coarse the grid is, how many cells the scan lands in, and how much of
+// the cloud a voxelisation at that size would collapse.
+function voxelFoot(fed, sampled) {
+  if (!viewSettings.voxels || fed.points === 0) return "";
+  if (!fed.vox) return "  ·  voxel grid too fine for this cloud · raise the size";
+  const { cells, n, size } = fed.vox;
+  const drop = (100 * (1 - cells / n)).toFixed(0);
+  return `  ·  voxels ${size} m: ${cells} cells over ${n}`
+    + `${sampled ? " sampled" : ""} pts`
+    + ` (${(n / cells).toFixed(1)} pts/cell, -${drop}%)`
+    + (fed.capped ? "  ·  too many cells to outline" : "");
 }
 
 export function dataSpec(binding) {
@@ -435,6 +497,10 @@ export function dataSpec(binding) {
         settings.appendChild(row);
         return control;
       };
+      // Every control here mirrors a SHARED setting, so it can go stale
+      // while the popover is closed (another panel moved it). Each one
+      // registers how to re-read itself; paintSettings runs them on open.
+      const syncers = [];
       const check = (label, key, onChange) => {
         const box = el("input");
         box.type = "checkbox";
@@ -443,6 +509,7 @@ export function dataSpec(binding) {
           setViewSettings({ [key]: box.checked });
           if (onChange) onChange();
         });
+        syncers.push(() => { box.checked = Boolean(viewSettings[key]); });
         return optRow(label, box);
       };
 
@@ -510,10 +577,45 @@ export function dataSpec(binding) {
       recenter.addEventListener("click", () => { if (v3d) v3d.viewer.frame(); });
       only3d.push(optRow("recenter", recenter).closest(".opt"));
 
+      // Voxels: what a `voxel_size` would do to THIS scan, seen before it is
+      // written into the recipe. Every cell the points occupy is drawn as a
+      // wireframe box, the way toaster frames them -- the cloud keeps its own
+      // colours, so the cage answers "how coarse is this grid here" without
+      // taking away the colouring that answers everything else. Cut in the
+      // browser from the points already on screen: no pipeline is touched and
+      // nothing is sent to the server.
+      const voxBox = check("voxels", "voxels");
+      only3d.push(voxBox.closest(".opt"));
+      voxBox.title = "Outline every voxel cell this cloud occupies";
+
+      // The two knobs only make sense once the cage is on; they hide with it
+      // rather than sitting there greyed out.
+      const voxelRows = [];
+      const voxRow = (control) => {
+        voxelRows.push(control.closest(".opt"));
+        return control;
+      };
+
+      const voxSize = el("input", "opt-input");
+      voxSize.type = "number";
+      voxSize.min = "0.01";
+      voxSize.step = "0.05";
+      voxSize.value = String(viewSettings.voxelSize);
+      voxSize.title = "Cell edge in metres -- the preprocessor's voxel_size";
+      voxRow(optRow("voxel size (m)", voxSize));
+      voxSize.addEventListener("change", () => setViewSettings({
+        voxelSize: Math.max(0.01, Number(voxSize.value) || VIEW_DEFAULTS.voxelSize),
+      }));
+
+      voxRow(check("one point per cell", "voxelReduce"));
+
       const paintSettings = () => {
         const is3d = currentKind() === "cloud3d";
         for (const row of only3d) row.hidden = !is3d;
+        for (const row of voxelRows) row.hidden = !is3d || !viewSettings.voxels;
+        for (const sync of syncers) sync();
         sizeInput.value = String(viewSettings.size);
+        voxSize.value = String(viewSettings.voxelSize);
         paintBackground();
         camSel.value = viewSettings.controls;
       };
@@ -523,8 +625,16 @@ export function dataSpec(binding) {
         if (!settings.hidden) paintSettings();
       });
       // Another panel (or the theme toggle) changed the settings: follow.
-      const offView = onViewSettings(() => {
+      const offView = onViewSettings((_all, patch) => {
         if (v3d) applyViewSettings(v3d.viewer);
+        // Most settings are uniforms pushed onto a live viewer, but the voxel
+        // grid is baked into the very arrays the viewer was fed: those take a
+        // re-feed. Only those, and only here -- a background tweak must not
+        // redraw the cloud, and a voxel one must not redraw an image panel
+        // that has no use for it.
+        const voxelMoved = patch
+          && Object.keys(patch).some((k) => k.startsWith("voxel"));
+        if (voxelMoved && currentKind() === "cloud3d") drawAs("cloud3d");
         if (!settings.hidden) paintSettings();
       });
 
@@ -794,16 +904,20 @@ export function dataSpec(binding) {
             stage.appendChild(inst.host);
             inst.viewer.resize(); // the host just got its size from the stage
             const spec = colorSpec();
-            const k = feedCloud3d(inst.viewer, arr, spec);
+            const fed = feedCloud3d(inst.viewer, arr, spec);
             // After setCloud, not before: it rebuilds the ground grid, which
             // would come back visible on every frame otherwise.
             applyViewSettings(inst.viewer);
-            if (!inst.framed && k > 0) { inst.framed = true; inst.viewer.frame(); }
+            if (!inst.framed && fed.points > 0) {
+              inst.framed = true;
+              inst.viewer.frame();
+            }
             // Frame slider paused → octree for exact-fast picking + LOD cut.
             if (v3dTimer) clearTimeout(v3dTimer);
             v3dTimer = setTimeout(() => { if (v3d) v3d.viewer.buildOctree(); }, 400);
             foot.textContent = colorFoot(spec) +
               (arr.fullRows ? `  ·  sample of ${arr.fullRows} pts` : "") +
+              voxelFoot(fed, Boolean(arr.fullRows)) +
               "  ·  drag: orbit · WASD/QE: fly · shift+arrows: rotate " +
               "(keys go to the clicked panel)";
           } else if (kind === "cloud" && arr.shape.length === 2) {
