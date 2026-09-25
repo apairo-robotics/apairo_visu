@@ -15,8 +15,12 @@ Interactive 3D LiDAR visualisation for [apairo](../apairo) datasets.
 cd ~/dev/apairo_visu
 python -m venv .venv && source .venv/bin/activate
 pip install -e ../apairo   # local dependency
-pip install -e .
+pip install -e ".[open3d]" # the Open3D desktop viewer (a large download)
 ```
+
+Open3D is only needed by the desktop viewer (`LidarViewer`, `apairo visu`): drop
+the `[open3d]` extra if you only use the studio (`.[studio]`) or the Rerun
+backend (`.[rerun]`).
 
 ## Quick start
 
@@ -372,9 +376,9 @@ apairo_visu/
 ```
 
 The light layer (`config`, `pipeline`, `graph`, `colors`, `geometry`, `poses`) imports
-only numpy/PyYAML, so `import apairo_visu` works headless; Open3D is pulled in
-lazily the first time `LidarViewer` is used, and `rerun-sdk` only when you import
-`apairo_visu.rerun`.
+only numpy/PyYAML, so `import apairo_visu` works headless; Open3D (the `open3d`
+extra) is imported lazily the first time `LidarViewer` is used, and `rerun-sdk`
+only when you import `apairo_visu.rerun`.
 
 ## Documentation
 

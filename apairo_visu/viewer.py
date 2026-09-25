@@ -32,9 +32,17 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
-import open3d as o3d
-import open3d.visualization.gui as gui
-import open3d.visualization.rendering as rendering
+
+try:
+    import open3d as o3d
+    import open3d.visualization.gui as gui
+    import open3d.visualization.rendering as rendering
+except ImportError as exc:  # an optional extra: only this viewer renders with Open3D
+    raise ImportError(
+        "The Open3D viewer (LidarViewer, `apairo visu`) needs Open3D, which is an "
+        "optional extra: pip install 'apairo-visu[open3d]'. The studio and the "
+        "Rerun backend do not need it."
+    ) from exc
 
 from .colors import (
     auto_color_map,

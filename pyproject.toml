@@ -13,7 +13,6 @@ license = { text = "MIT" }
 requires-python = ">=3.11"
 dependencies = [
     "numpy",
-    "open3d",
     "PyYAML",
 
     "apairo>=0.6",
@@ -27,9 +26,13 @@ visu = "apairo_visu.__main__:main"
 rerun = "apairo_visu.rerun.cli:main"
 
 [project.optional-dependencies]
+# The desktop viewer (`apairo visu`, LidarViewer) is the only part that renders
+# with Open3D, a large download: the studio and the Rerun backend never need it.
+# matplotlib supplies its height (viridis) and label (tab20) colour maps.
+open3d = ["open3d", "matplotlib"]
 studio = ["fastapi", "uvicorn[standard]"]
 rerun = ["rerun-sdk"]
-dev = ["pytest", "httpx"]
+dev = ["pytest", "httpx", "matplotlib"]
 
 [tool.setuptools.packages.find]
 where = ["."]

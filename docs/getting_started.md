@@ -2,17 +2,19 @@
 
 ## Installation
 
-`apairo_visu` depends on [apairo](../../apairo) (local package) and [Open3D](https://www.open3d.org/) for rendering.
+`apairo_visu` depends on [apairo](../../apairo) (local package). The desktop viewer renders with [Open3D](https://www.open3d.org/), an optional extra.
 
 ```bash
 cd ~/dev/apairo_visu
 python -m venv .venv && source .venv/bin/activate
 
 pip install -e ../apairo   # install apairo from local sources
-pip install -e .           # install apairo_visu (downloads open3d from PyPI)
+pip install -e ".[open3d]" # install apairo_visu with the Open3D desktop viewer
 ```
 
-Open3D is a large package (~200 MB). The first `pip install` will take a few minutes.
+Open3D is a large package (~200 MB), and only the desktop viewer (`LidarViewer`,
+`apairo visu`) needs it: leave out `[open3d]` if you only use the studio
+(`.[studio]`) or the Rerun backend (`.[rerun]`).
 
 ## Concepts
 

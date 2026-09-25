@@ -31,3 +31,24 @@ def test_builtin_label_configs_load(name):
 def test_lazy_lidar_viewer_attribute_error_for_unknown():
     with pytest.raises(AttributeError):
         _ = apairo_visu.does_not_exist
+
+
+def test_open3d_is_an_optional_extra():
+    import tomllib
+    from pathlib import Path
+
+    project = tomllib.loads(
+        (Path(__file__).resolve().parents[1] / "pyproject.toml").read_text()
+    )["project"]
+    assert not any(d.startswith("open3d") for d in project["dependencies"])
+    assert "open3d" in project["optional-dependencies"]["open3d"]
+
+
+def test_viewer_without_open3d_names_the_extra(monkeypatch):
+    import importlib
+    import sys
+
+    monkeypatch.setitem(sys.modules, "open3d", None)  # import open3d -> ImportError
+    monkeypatch.delitem(sys.modules, "apairo_visu.viewer", raising=False)
+    with pytest.raises(ImportError, match=r"apairo-visu\[open3d\]"):
+        importlib.import_module("apairo_visu.viewer")
