@@ -11,7 +11,7 @@ height maps to the same colour in every frame and across the CSF/RANSAC panels.
 Without a fixed range each frame renormalises on its own min/max, so the colours
 are not comparable over time — pass ``--hmin``/``--hmax`` to anchor the scale.
 
-Requires: apairo-rr, CSF  (pip install apairo-rr CSF)
+Requires: the rerun extra, CSF  (pip install -e ".[rerun]" CSF)
 
 Usage::
 

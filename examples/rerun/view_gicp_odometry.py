@@ -6,7 +6,7 @@ the estimated poses to Rerun alongside the semantic labels — no data written t
 Compare the estimated trajectory (orange marker + blue line) with the map
 structure to verify that scan-to-scan registration is geometrically consistent.
 
-Requires: apairo-rr, open3d  (pip install apairo-rr open3d)
+Requires: the rerun extra, open3d  (pip install -e ".[rerun]" open3d)
 
 Usage::
 

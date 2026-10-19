@@ -6,7 +6,7 @@ Rerun alongside the semantic labels — no data written to disk.
 Compare the estimated trajectory (orange marker + blue line) with the map
 structure to verify that the poses are geometrically consistent.
 
-Requires: apairo-rr, kiss-icp  (pip install apairo-rr kiss-icp)
+Requires: the rerun extra, kiss-icp  (pip install -e ".[rerun]" kiss-icp)
 
 Usage::
 

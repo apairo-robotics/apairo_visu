@@ -3,7 +3,7 @@
 Compares the original semantic labels with the binary traversable/non-traversable
 mapping produced by TraversabilityFromLabels — no data written to disk.
 
-Requires: apairo-rr  (pip install apairo-rr)
+Requires: the rerun extra  (pip install -e ".[rerun]")
 
 Usage::
 

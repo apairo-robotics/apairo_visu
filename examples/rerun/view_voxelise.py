@@ -3,7 +3,7 @@
 Compares the original point cloud (range-filtered) with the voxelised version
 using VoxelisePointCloud + VoxeliseLabels — no data written to disk.
 
-Requires: apairo-rr  (pip install apairo-rr)
+Requires: the rerun extra  (pip install -e ".[rerun]")
 
 Usage::
 
