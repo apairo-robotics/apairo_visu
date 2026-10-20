@@ -11,7 +11,7 @@ Each pipeline step is either a callable with signature::
     step(pts: np.ndarray, labels: np.ndarray | None)
         -> tuple[np.ndarray, np.ndarray | None]
 
-or an apairo ``FramePreprocessor`` (its ``process`` output becomes the new
+or an apairo ``FramePreprocessor`` (its output becomes the new
 labels -- handy for dropping a real segmentation preprocessor straight in).
 Replace the stub models below with your actual inference calls.
 

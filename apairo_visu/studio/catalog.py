@@ -22,6 +22,8 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from ..pipeline import is_preprocessor
+
 DEFAULT_PACKAGES = ("apairo_transform", "apairo_preprocess")
 
 _SCALARS = {bool: "bool", int: "int", float: "float", str: "str"}
@@ -134,9 +136,7 @@ class Catalog:
                 name=name,
                 module=module.__name__,
                 kind=kind,
-                is_preprocessor=bool(
-                    hasattr(obj, "process") and hasattr(obj, "input_keys")
-                ),
+                is_preprocessor=is_preprocessor(obj),
                 doc=inspect.getdoc(obj),
                 signature=None,
                 params=_param_schema(obj),

@@ -7,6 +7,7 @@ from typing import Callable, Optional, Union
 
 import numpy as np
 
+from ..pipeline import call_preprocessor, is_preprocessor
 from .colormaps import Colormap
 
 
@@ -37,8 +38,8 @@ class Pipeline:
             -> tuple[np.ndarray, np.ndarray | None]
 
     Steps are applied in order.  apairo_preprocess ``FramePreprocessor``
-    objects are also accepted directly as steps — their ``process(sample)``
-    method is called automatically.  Unlike the old (pts, labels)-only
+    objects are also accepted directly as steps — they are called on the
+    sample automatically.  Unlike the old (pts, labels)-only
     interface, steps now receive the **full Sample** so any input key
     declared in ``step.input_keys`` is resolved from the sample without
     hardcoding.
@@ -98,7 +99,7 @@ class Pipeline:
         labels = np.asarray(_lv, dtype=np.int64).copy() if _lv is not None else None
 
         for step in self.steps:
-            if hasattr(step, "process") and hasattr(step, "input_keys"):
+            if is_preprocessor(step):
                 if hasattr(step, "_idx"):
                     step._idx = frame_idx
                 # Build sub-sample from step.input_keys.
@@ -112,7 +113,7 @@ class Pipeline:
                         sub_data[k] = labels
                     elif k in sample.data:
                         sub_data[k] = sample.data[k]
-                result = step.process(types.SimpleNamespace(data=sub_data))
+                result = call_preprocessor(step, types.SimpleNamespace(data=sub_data))
                 if result is not None:
                     labels = np.asarray(result, dtype=np.int64)
             elif hasattr(step, "compute_mask"):

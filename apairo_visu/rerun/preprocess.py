@@ -17,6 +17,8 @@ import numpy as np
 
 from apairo.core.preprocessor import SequencePreprocessor
 
+from ..pipeline import call_preprocessor
+
 _SENTINEL = object()
 
 
@@ -67,7 +69,7 @@ class _SessionDataset:
                     )
                 else:
                     sub = sample
-                self._cache[idx] = self._preprocessor.process(sub)
+                self._cache[idx] = call_preprocessor(self._preprocessor, sub)
         sample.data[self._key] = self._cache.get(idx, self._default)
         return sample
 
@@ -84,7 +86,9 @@ class _SessionDataset:
                 })
             return s
 
-        results = self._preprocessor.process(_make_sub(i) for i in sorted_frames)
+        results = call_preprocessor(
+            self._preprocessor, (_make_sub(i) for i in sorted_frames)
+        )
         for fi, r in zip(sorted_frames, results):
             self._cache[fi] = r
         self._sequence_computed = True

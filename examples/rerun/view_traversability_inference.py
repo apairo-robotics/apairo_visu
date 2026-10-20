@@ -51,7 +51,7 @@ class _PlaceholderModel:
         self._flip = flip
         self._rng = np.random.default_rng(seed)
 
-    def process(self, sample) -> np.ndarray:
+    def __call__(self, sample) -> np.ndarray:
         gt = np.isin(np.asarray(sample.data["labels"]), self._trav_ids)
         flip = self._rng.random(len(gt)) < self._flip
         return np.where(flip, ~gt, gt).astype(np.uint8)

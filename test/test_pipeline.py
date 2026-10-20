@@ -1,6 +1,9 @@
 """Tests for Pipeline -- plain callables and the apairo FramePreprocessor bridge."""
 
+import warnings
+
 import numpy as np
+import pytest
 
 from apairo_visu import Pipeline
 
@@ -44,12 +47,12 @@ def test_step_without_frame_idx_still_works():
 
 
 def test_frame_preprocessor_bridge_replaces_labels():
-    # A FramePreprocessor-like object: detected structurally via input_keys +
-    # process, fed a real apairo.Sample, its returned array becomes the labels.
+    # A FramePreprocessor-like object: detected structurally via input_keys,
+    # called on a real apairo.Sample, its returned array becomes the labels.
     class FakeSegPreprocessor:
         input_keys = ["lidar"]
 
-        def process(self, sample):
+        def __call__(self, sample):
             pts = sample.data["lidar"]
             # label points by sign of x
             return (pts[:, 0] > 0).astype(np.int64)
@@ -57,7 +60,7 @@ def test_frame_preprocessor_bridge_replaces_labels():
     pts = np.array([[-1, 0, 0], [2, 0, 0], [3, 0, 0]], dtype=np.float32)
     out_pts, out_labels = Pipeline("seg", [FakeSegPreprocessor()]).run(pts, None)
     np.testing.assert_array_equal(out_pts, pts)          # points untouched
-    np.testing.assert_array_equal(out_labels, [0, 1, 1])  # labels from process
+    np.testing.assert_array_equal(out_labels, [0, 1, 1])  # labels from the call
 
 
 def test_frame_preprocessor_receives_frame_index():
@@ -65,10 +68,42 @@ def test_frame_preprocessor_receives_frame_index():
         input_keys = ["lidar"]
         _idx = -1
 
-        def process(self, sample):
+        def __call__(self, sample):
             return np.full(len(sample.data["lidar"]), self._idx, dtype=np.int64)
 
     proc = StatefulProc()
     _, labels = Pipeline("p", [proc]).run(np.zeros((4, 3)), None, frame_idx=42)
     assert proc._idx == 42
     np.testing.assert_array_equal(labels, [42, 42, 42, 42])
+
+
+def test_process_only_step_still_runs():
+    # The protocol before apairo 0.5: input_keys and a process method, no __call__.
+    class LegacyProc:
+        input_keys = ["lidar"]
+
+        def process(self, sample):
+            return np.ones(len(sample.data["lidar"]), dtype=np.int64)
+
+    _, labels = Pipeline("p", [LegacyProc()]).run(np.zeros((2, 3)), None)
+    np.testing.assert_array_equal(labels, [1, 1])
+
+
+def test_apairo_preprocessor_runs_without_deprecation():
+    # Calling .process() on an apairo preprocessor goes through its deprecated
+    # alias: the pipeline calls the instance instead.
+    pytest.importorskip("apairo")
+    from apairo import FramePreprocessor
+
+    class Positive(FramePreprocessor):
+        output_key = "positive"
+        input_keys = ["lidar"]
+
+        def __call__(self, sample):
+            return (sample.data["lidar"][:, 0] > 0).astype(np.int64)
+
+    pts = np.array([[-1, 0, 0], [2, 0, 0]], dtype=np.float32)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", DeprecationWarning)
+        _, labels = Pipeline("p", [Positive()]).run(pts, None)
+    np.testing.assert_array_equal(labels, [0, 1])

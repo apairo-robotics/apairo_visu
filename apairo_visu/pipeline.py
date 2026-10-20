@@ -10,7 +10,7 @@ Two kinds of step are accepted, and may be freely mixed in the same pipeline:
   ``frame_idx`` keyword) -- a filter, an augmentation, a model wrapper;
 * an **apairo** :class:`~apairo.core.preprocessor.FramePreprocessor` -- its
   declared ``input_keys`` are fed from ``pts`` / ``labels`` and the array it
-  returns from ``process`` becomes the new per-point labels.
+  returns becomes the new per-point labels.
 
 This module imports only numpy; apairo is imported lazily, the first time a
 ``FramePreprocessor`` step is actually run.
@@ -24,17 +24,26 @@ from typing import Callable
 import numpy as np
 
 # A step is either a plain callable or an apairo FramePreprocessor (duck-typed
-# below via ``input_keys`` / ``process``).
+# below via ``input_keys``).
 Step = Callable
 
 
-def _is_frame_preprocessor(step) -> bool:
-    """True for an apairo FramePreprocessor-like object.
+def is_preprocessor(step) -> bool:
+    """True for an apairo preprocessor-like object: it declares ``input_keys``.
 
-    Detected structurally (``input_keys`` + ``process``) rather than by import
-    so apairo stays an optional, lazily-loaded dependency.
+    Detected structurally rather than by import so apairo stays an optional,
+    lazily-loaded dependency. Not by ``process``: apairo keeps that name only
+    as a deprecated alias of calling the preprocessor.
     """
-    return hasattr(step, "process") and hasattr(step, "input_keys")
+    return hasattr(step, "input_keys") and (callable(step) or hasattr(step, "process"))
+
+
+def call_preprocessor(step, sample):
+    """Run a preprocessor on *sample*: call it, as apairo does since 0.5.
+
+    An object with only a ``process`` method, the protocol before, still runs.
+    """
+    return step(sample) if callable(step) else step.process(sample)
 
 
 def _run_preprocessor(
@@ -47,7 +56,7 @@ def _run_preprocessor(
 
     Builds a real :class:`apairo.Sample` carrying only the channels the
     processor declares in ``input_keys`` (mapped from the viewer's ``lidar`` /
-    ``labels`` arrays), then returns ``process(sample)`` cast to int64 labels.
+    ``labels`` arrays), then returns its output cast to int64 labels.
     """
     from apairo import Sample
 
@@ -61,7 +70,7 @@ def _run_preprocessor(
             data["lidar"] = pts
         elif key == "labels" and labels is not None:
             data["labels"] = labels
-    result = step.process(Sample(data=data))
+    result = call_preprocessor(step, Sample(data=data))
     if result is None:
         return labels
     return np.asarray(result, dtype=np.int64)
@@ -103,7 +112,7 @@ class Pipeline:
     ) -> tuple[np.ndarray, np.ndarray | None]:
         """Apply every step to ``(pts, labels)`` and return the result."""
         for step in self.steps:
-            if _is_frame_preprocessor(step):
+            if is_preprocessor(step):
                 labels = _run_preprocessor(step, pts, labels, frame_idx)
             else:
                 try:

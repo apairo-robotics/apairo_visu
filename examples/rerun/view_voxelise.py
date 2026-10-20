@@ -34,8 +34,8 @@ def make_voxelise_step(voxel_size: float, max_range: float | None = None):
 
     def step(pts, labels):
         sample = types.SimpleNamespace(data={"lidar": pts, "labels": labels})
-        new_pts = pc_proc.process(sample)
-        new_labels = lb_proc.process(sample) if labels is not None else None
+        new_pts = pc_proc(sample)
+        new_labels = lb_proc(sample) if labels is not None else None
         return new_pts, new_labels
 
     return step

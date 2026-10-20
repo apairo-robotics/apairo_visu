@@ -108,7 +108,7 @@ class TraversabilityConfusion:
         self.gt_key = gt_key
         self.input_keys = [pred_key, gt_key]
 
-    def process(self, sample) -> np.ndarray:
+    def __call__(self, sample) -> np.ndarray:
         return confusion_class(
             sample.data[self.pred_key], sample.data[self.gt_key]
         )
