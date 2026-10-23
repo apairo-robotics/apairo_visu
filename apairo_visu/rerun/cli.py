@@ -275,7 +275,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         except Exception as exc:  # noqa: BLE001 -- surface the loader's own message
             print(f"Could not load dataset: {exc}", file=sys.stderr)
             return 1
-        avail = sorted(getattr(ds, "available_keys", []) or ds[0].data.keys())
+        # An async dataset's first event holds one channel: ask the dataset.
+        avail = sorted(getattr(ds, "available", None) or ds[0].data.keys())
         print("Pass --lidar and/or --camera with one of these channels:")
         print(f"  {', '.join(avail) if avail else '(none found)'}")
         return 2
