@@ -14,7 +14,7 @@ Example::
     from apairo_visu import studio
 
     ds = apairo.RawDataset(root, keys=[...]).synchronize(...)
-    ds.transform("lidar", fn, output="lidar_f")
+    ds = ds.transform("lidar", fn, output="lidar_f")
     studio.launch(ds)            # serves on 127.0.0.1:8710 and opens a browser
 """
 

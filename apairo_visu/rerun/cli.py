@@ -410,14 +410,14 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     if labels_synced:
         if pose_x:
-            ds = ds.transform(pose_x, PoseTo4x4())
+            ds = ds.transform(pose_x, PoseTo4x4(), in_place=False)
         for lk in lidar_x:
             if args.range_max is not None:
-                ds = ds.transform(lk, RangeFilter(max=args.range_max))
+                ds = ds.transform(lk, RangeFilter(max=args.range_max), in_place=False)
             if mount is not None:
-                ds = ds.transform(lk, TransformPoints(mount))
+                ds = ds.transform(lk, TransformPoints(mount), in_place=False)
             if pose_x:
-                ds = ds.transform(ApplyPose(lidar=lk, pose=pose_x))
+                ds = ds.transform(ApplyPose(lidar=lk, pose=pose_x), in_place=False)
         frames = _pick(list(range(len(ds))))
     elif pose_x:
         if not lidar_x:
@@ -427,20 +427,20 @@ def main(argv: Optional[list[str]] = None) -> int:
         ref = lidar_x[0]
         others = [k for k in lidar_x + camera_x + [pose_x] if k != ref]
         ds = ds.synchronize(reference=ref, method={k: "nearest" for k in others})
-        ds = ds.transform(pose_x, PoseTo4x4())  # pose channel -> 4x4 (passthrough if already)
+        ds = ds.transform(pose_x, PoseTo4x4(), in_place=False)  # pose channel -> 4x4 (passthrough if already)
         for lk in lidar_x:
             if args.range_max is not None:
-                ds = ds.transform(lk, RangeFilter(max=args.range_max))
+                ds = ds.transform(lk, RangeFilter(max=args.range_max), in_place=False)
             if mount is not None:
-                ds = ds.transform(lk, TransformPoints(mount))
-            ds = ds.transform(ApplyPose(lidar=lk, pose=pose_x))  # dynamic pose -> world frame
+                ds = ds.transform(lk, TransformPoints(mount), in_place=False)
+            ds = ds.transform(ApplyPose(lidar=lk, pose=pose_x), in_place=False)  # dynamic pose -> world frame
         frames = _pick(list(range(len(ds))))
     else:
         for lk in lidar_x:
             if args.range_max is not None:
-                ds = ds.transform(lk, RangeFilter(max=args.range_max))
+                ds = ds.transform(lk, RangeFilter(max=args.range_max), in_place=False)
             if mount is not None:
-                ds = ds.transform(lk, TransformPoints(mount))
+                ds = ds.transform(lk, TransformPoints(mount), in_place=False)
         if single_sequence:
             # Already loaded from the sequence's own directory (see load_path
             # above) -- ds *is* the requested sequence, nothing left to filter.

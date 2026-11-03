@@ -19,7 +19,7 @@ def build_chain():
         return arr * 2
 
     ds = ArrayDataset(n=4, keys=("lidar", "imu"))
-    ds.transform("lidar", double, output="lidar_2x")
+    ds = ds.transform("lidar", double, output="lidar_2x", in_place=False)
     return ds, ds.filter(np.array([0, 2]))
 
 
@@ -144,8 +144,8 @@ def test_registry_sample_at_step_prefix():
         return arr + 1
 
     ds = ArrayDataset(n=3)
-    ds.transform("lidar", times_two, output="lidar_2x")
-    ds.transform("lidar_2x", plus_one)
+    ds = ds.transform("lidar", times_two, output="lidar_2x", in_place=False)
+    ds = ds.transform("lidar_2x", plus_one, in_place=False)
     reg = StudioRegistry([ds])
     ids = {n.label: n.id for n in reg.spec.nodes}
 

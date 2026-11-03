@@ -64,7 +64,7 @@ loaded, apairo core is untouched.
 from apairo_visu import graph
 
 ds = raw.synchronize(reference="lidar", method="nearest", tolerance=0.05)
-ds.transform("lidar", ground_height, output="ground")
+ds = ds.transform("lidar", ground_height, output="ground")
 train = ds.filter(valid_indices)
 
 graph.show(train)                    # open an interactive page (pan/zoom, themes)
