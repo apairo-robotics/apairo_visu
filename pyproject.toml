@@ -6,17 +6,33 @@ build-backend = "setuptools.build_meta"
 name = "apairo-visu"
 version = "0.1.0"
 description = "Interactive 3D LiDAR visualisation for apairo datasets"
+readme = "README.md"
 authors = [
   { name = "Augustin Bresset", email = "augustin.bresset@gmail.com" },
 ]
 license = { text = "MIT" }
 requires-python = ">=3.11"
+keywords = ["apairo", "lidar", "point-cloud", "visualization", "rerun"]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Visualization",
+]
 dependencies = [
     "numpy",
     "PyYAML",
-
-    "apairo>=0.6",
+    "apairo>=0.9",
 ]
+
+[project.urls]
+Homepage = "https://apairo-robotics.github.io/"
+Repository = "https://github.com/apairo-robotics/apairo_visu"
+Issues = "https://github.com/apairo-robotics/apairo_visu/issues"
 
 # Ecosystem subcommands discovered by the core `apairo` CLI
 # (see apairo.cli_plugins): `apairo studio <dir>`, `apairo visu ...`.
