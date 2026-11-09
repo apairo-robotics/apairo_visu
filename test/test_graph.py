@@ -63,7 +63,7 @@ def test_per_channel_transform_becomes_labelled_step():
         return arr * 2
 
     ds = ArrayDataset()
-    ds.transform("lidar", double, output="lidar_2x")
+    ds = ds.transform("lidar", double, output="lidar_2x", in_place=False)
     view = ds.filter(np.array([0]))
 
     spec = graph.describe(view)
@@ -85,7 +85,7 @@ def test_sample_level_transform_has_no_channel_labels():
         return sample
 
     ds = ArrayDataset()
-    ds.transform(jitter)
+    ds = ds.transform(jitter, in_place=False)
 
     spec = graph.describe(ds)
     step = next(n for n in spec.nodes if n.kind == "transform")
@@ -102,8 +102,8 @@ def test_independent_channel_transforms_are_parallel_branches():
         return arr
 
     ds = ArrayDataset(keys=("lidar", "imu"))
-    ds.transform("lidar", fix_lidar)
-    ds.transform("imu", fix_imu)
+    ds = ds.transform("lidar", fix_lidar, in_place=False)
+    ds = ds.transform("imu", fix_imu, in_place=False)
     view = ds.filter(np.array([0]))
 
     spec = graph.describe(view)
@@ -121,10 +121,10 @@ def test_independent_channel_transforms_are_parallel_branches():
 
 def test_sample_level_step_is_a_barrier_joining_branches():
     ds = ArrayDataset(keys=("lidar", "imu"))
-    ds.transform("lidar", lambda a: a, output="lidar_f")
-    ds.transform("imu", lambda a: a, output="imu_f")
-    ds.transform(lambda s: s)  # whole-sample: must join both branches
-    ds.transform("lidar_f", lambda a: a)  # reads from the barrier, not the fork
+    ds = ds.transform("lidar", lambda a: a, output="lidar_f", in_place=False)
+    ds = ds.transform("imu", lambda a: a, output="imu_f", in_place=False)
+    ds = ds.transform(lambda s: s, in_place=False)  # whole-sample: must join both branches
+    ds = ds.transform("lidar_f", lambda a: a, in_place=False)  # reads from the barrier, not the fork
 
     spec = graph.describe(ds)
     barrier = spec.nodes[3]
@@ -141,8 +141,8 @@ def test_factory_closures_show_the_factory_name():
         return fn
 
     ds = ArrayDataset()
-    ds.transform(embed_labels("lidar"))
-    ds.transform(lambda s: s)
+    ds = ds.transform(embed_labels("lidar"), in_place=False)
+    ds = ds.transform(lambda s: s, in_place=False)
 
     spec = graph.describe(ds)
     labels = [n.label for n in spec.nodes if n.kind == "transform"]
@@ -244,7 +244,7 @@ def test_export_svg_uses_builtin_renderer(tmp_path, monkeypatch):
 def test_export_html_is_selfcontained_and_interactive(tmp_path, monkeypatch):
     monkeypatch.setenv("PATH", "")
     ds = ArrayDataset()
-    ds.transform("lidar", lambda a: a, output="lidar_f")
+    ds = ds.transform("lidar", lambda a: a, output="lidar_f", in_place=False)
     out = graph.export(ds.filter(np.array([0])), tmp_path / "p.html")
     text = out.read_text()
     assert text.startswith("<!doctype html>")

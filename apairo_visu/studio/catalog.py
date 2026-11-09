@@ -212,10 +212,10 @@ class Catalog:
             imports = f"from functools import partial\n" * bool(args) + \
                 f"from {entry.module} import {entry.name}"
         if entry.is_preprocessor:
-            return f"{imports}\n\nds.transform({call})"
+            return f"{imports}\n\nds = ds.transform({call})"
         return (
             f"{imports}\n\n"
-            f'ds.transform("{channel}", {call}, output="{output}")'
+            f'ds = ds.transform("{channel}", {call}, output="{output}")'
         )
 
 

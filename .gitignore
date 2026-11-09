@@ -4,3 +4,6 @@ build/
 
 **pycache**
 **.pyc
+
+# CI workflows, despite the hidden-directory rule above
+!.github/

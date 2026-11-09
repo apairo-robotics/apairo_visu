@@ -12,15 +12,14 @@ Interactive 3D LiDAR visualisation for [apairo](../apairo) datasets.
 ## Installation
 
 ```bash
-cd ~/dev/apairo_visu
-python -m venv .venv && source .venv/bin/activate
-pip install -e ../apairo   # local dependency
-pip install -e ".[open3d]" # the Open3D desktop viewer (a large download)
+pip install "apairo-visu[studio]"   # the browser studio
+pip install "apairo-visu[rerun]"    # the Rerun backend
+pip install "apairo-visu[open3d]"   # the Open3D desktop viewer (a large download)
 ```
 
 Open3D is only needed by the desktop viewer (`LidarViewer`, `apairo visu`): drop
-the `[open3d]` extra if you only use the studio (`.[studio]`) or the Rerun
-backend (`.[rerun]`).
+the `[open3d]` extra if you only use the studio (`[studio]`) or the Rerun
+backend (`[rerun]`). From a clone, `pip install -e ".[studio]"`.
 
 ## Quick start
 
@@ -64,7 +63,7 @@ loaded, apairo core is untouched.
 from apairo_visu import graph
 
 ds = raw.synchronize(reference="lidar", method="nearest", tolerance=0.05)
-ds.transform("lidar", ground_height, output="ground")
+ds = ds.transform("lidar", ground_height, output="ground")
 train = ds.filter(valid_indices)
 
 graph.show(train)                    # open an interactive page (pan/zoom, themes)
