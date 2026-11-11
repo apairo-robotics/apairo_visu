@@ -144,6 +144,19 @@ export function drawCloud(canvas, arr, color, view = null, size = 1.7) {
 
 /* --------------------------------------------------------------- image */
 
+// Pixel scale to 0..255: float images in [0, 1] (the usual convention) are
+// stretched; a float image already in 0..255 and integer images are not.
+function pixelScale(arr) {
+  if (!/^float/.test(arr.dtype)) return 1;
+  let hi = -Infinity;
+  for (let i = 0; i < arr.data.length; i++) {
+    const v = arr.data[i];
+    if (v > hi) hi = v; // NaN compares false: ignored
+  }
+  return hi <= 1 ? 255 : 1;
+}
+
+// (H, W, 3|4) image -> canvas pixels (values outside 0..255 clamp).
 export function drawImage(canvas, arr, bgr = false) {
   const [h, w, c] = arr.shape;
   canvas.width = w;
@@ -151,11 +164,13 @@ export function drawImage(canvas, arr, bgr = false) {
   const ctx = canvas.getContext("2d");
   const img = ctx.createImageData(w, h);
   const r = bgr ? 2 : 0, b = bgr ? 0 : 2;
+  const scale = pixelScale(arr);
+  const px = (j) => Number(arr.data[j]) * scale;
   for (let i = 0; i < h * w; i++) {
-    img.data[i * 4] = arr.data[i * c + r];
-    img.data[i * 4 + 1] = arr.data[i * c + 1];
-    img.data[i * 4 + 2] = arr.data[i * c + b];
-    img.data[i * 4 + 3] = c === 4 ? arr.data[i * c + 3] : 255;
+    img.data[i * 4] = px(i * c + r);
+    img.data[i * 4 + 1] = px(i * c + 1);
+    img.data[i * 4 + 2] = px(i * c + b);
+    img.data[i * 4 + 3] = c === 4 ? px(i * c + 3) : 255;
   }
   ctx.putImageData(img, 0, 0);
 }

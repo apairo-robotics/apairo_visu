@@ -209,9 +209,14 @@ def view(
     show_frames = len(dataset) > 0 and _channel_frame(dataset, 0) is not None
 
     # Blueprint: one Spatial3DView per pipeline side-by-side, with image channels
-    # stacked in a 2D column to their right.
+    # stacked in a 2D column to their right. The trajectory and robot marker
+    # are logged once under /world, outside every pipeline's subtree, so each
+    # 3D view lists them explicitly -- `$origin/**` alone would never show them.
+    contents = ["$origin/**"]
+    if poses is not None or pose_key is not None:
+        contents.append("/world/**")
     views = [
-        rrb.Spatial3DView(origin=f"/{pipe.name}", name=pipe.name)
+        rrb.Spatial3DView(origin=f"/{pipe.name}", name=pipe.name, contents=contents)
         for pipe in pipelines
     ]
     spatial = rrb.Horizontal(*views) if len(views) > 1 else (views[0] if views else None)
@@ -340,12 +345,13 @@ def view(
             if pipe.point_key not in sample.data:
                 continue
             pts, labels = pipe.run(sample, frame_idx=frame_idx)
-
-            if max_points is not None and len(pts) > max_points:
-                idx = np.random.choice(len(pts), max_points, replace=False)
-                pts = pts[idx]
-                if labels is not None:
-                    labels = labels[idx]
+            if labels is not None and len(labels) != len(pts):
+                raise ValueError(
+                    f"pipeline {pipe.name!r}, frame {frame_idx}: "
+                    f"{len(labels)} labels ({pipe.label_key!r}) for "
+                    f"{len(pts)} points ({pipe.point_key!r}); a step changed "
+                    f"one without the other"
+                )
 
             xyz = pts[:, :3].astype(np.float64)
 
@@ -366,6 +372,22 @@ def view(
             else:
                 colors = np.asarray(_default_colormap(pts))
                 radius = point_radius if point_radius is not None else 0.02
+            if colors is not None and colors.ndim == 2 and len(colors) != len(pts):
+                raise ValueError(
+                    f"pipeline {pipe.name!r}, frame {frame_idx}: the colormap "
+                    f"returned {len(colors)} colours for {len(pts)} points"
+                )
+
+            # Subsample after colouring: a colormap reading a per-point
+            # channel of the sample (KeyColormap) sees the full-length cloud,
+            # and the same rows are kept from positions, ids and colours.
+            if max_points is not None and len(xyz) > max_points:
+                idx = np.random.choice(len(xyz), max_points, replace=False)
+                xyz = xyz[idx]
+                if class_ids is not None:
+                    class_ids = class_ids[idx]
+                if colors is not None and colors.ndim == 2:
+                    colors = colors[idx]
 
             # Drop invalid (NaN/inf) returns. Organized clouds (e.g. Ouster) pad
             # non-returns with NaN xyz, which otherwise blow up the 3D view's

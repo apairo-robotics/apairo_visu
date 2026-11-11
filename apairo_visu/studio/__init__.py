@@ -38,7 +38,10 @@ def launch(
             Several datasets are merged into one graph (shared upstream
             objects appear once).
         host: Bind address -- keep the localhost default unless you know
-            you want the studio reachable from other machines.
+            you want the studio reachable from other machines.  Bound to a
+            given address, the studio answers only to requests addressed to
+            it or to a loopback name (``localhost``, ``127.0.0.1``,
+            ``::1``); bound to ``0.0.0.0`` it answers to any name.
         port: HTTP port.
         open_browser: Open the default browser on the studio URL.
         title: Window / page title.

@@ -14,6 +14,12 @@ from apairo_visu.studio.registry import StudioRegistry  # noqa: E402
 from apairo_visu.studio.server import create_app  # noqa: E402
 
 
+def _client(app):
+    # The studio answers only to the names it is reachable by: a loopback
+    # Host, not TestClient's default "testserver".
+    return TestClient(app, base_url="http://127.0.0.1")
+
+
 def build_chain():
     def double(arr):
         return arr * 2
@@ -78,7 +84,7 @@ def test_registry_unknown_node_and_empty_datasets():
 @pytest.fixture()
 def client():
     _, view = build_chain()
-    return TestClient(create_app([view], title="studio test"))
+    return _client(create_app([view], title="studio test"))
 
 
 def test_api_graph(client):
@@ -186,7 +192,7 @@ def test_api_sample_decimation():
             return Sample(data={"lidar": np.zeros((1000, 3), np.float32)})
 
     app = create_app([BigDataset(n=2)], max_points=100)
-    payload = TestClient(app).get("/api/node/n0/sample/0").json()
+    payload = _client(app).get("/api/node/n0/sample/0").json()
     lidar = payload["channels"]["lidar"]
     assert lidar["full_rows"] == 1000
     assert lidar["shape"][0] == 100
@@ -249,7 +255,7 @@ def test_catalog_schema_apply_and_snippet():
 def catalog_client():
     _, view = build_chain()
     app = create_app([view], title="studio test", catalog=_test_catalog())
-    return TestClient(app)
+    return _client(app)
 
 
 def test_api_catalog_and_try():
@@ -369,7 +375,7 @@ def test_synchronized_root_keeps_sequence_provenance(tmp_path):
 
 def test_sample_endpoint_forwards_frame_provenance():
     app = create_app([SeqArrayDataset(n=5)])
-    client = TestClient(app)
+    client = _client(app)
     node_id = app.state.registry.spec.nodes[0].id
     payload = client.get(f"/api/node/{node_id}/sample/0").json()
     assert payload["frame"]["sequence"] == "seq_a"
@@ -415,7 +421,7 @@ def test_series_reduces_cloud_columns_and_handles_bad_col():
 
 def test_series_endpoint_range_and_errors():
     app = create_app([SignalDataset(n=5)])
-    client = TestClient(app)
+    client = _client(app)
     node_id = app.state.registry.spec.nodes[0].id
     payload = client.get(
         f"/api/node/{node_id}/series/imu?cols=1&start=1&stop=3").json()
@@ -616,7 +622,7 @@ def test_entries_endpoint(tmp_path):
     import apairo
 
     app = create_app([apairo.RawDataset(str(_kitti_root(tmp_path)))])
-    client = TestClient(app)
+    client = _client(app)
     node_id = app.state.registry.spec.nodes[0].id
 
     payload = client.get(
@@ -655,7 +661,7 @@ def test_locate_endpoint(tmp_path):
     import apairo
 
     app = create_app([apairo.RawDataset(str(_kitti_root(tmp_path)))])
-    client = TestClient(app)
+    client = _client(app)
     node_id = app.state.registry.spec.nodes[0].id
 
     payload = client.get(
@@ -674,7 +680,7 @@ def test_locate_without_stems_reports_it():
 
 def test_frames_endpoint_and_sample_timestamp():
     app = create_app([AsyncishDataset()])
-    client = TestClient(app)
+    client = _client(app)
     node_id = app.state.registry.spec.nodes[0].id
     assert client.get(f"/api/node/{node_id}/frames/camera").json()["indices"] == [2, 3]
     assert client.get("/api/node/nope/frames/camera").status_code == 404
@@ -870,3 +876,163 @@ def test_static_front_served_with_ssr_graph(client):
     assert client.get("/src/resize.js").status_code == 200
     assert client.get("/src/entriespanel.js").status_code == 200
     assert client.get("/style.css").status_code == 200
+
+
+# ------------------------------------------------------- request hardening
+
+
+def test_api_refuses_a_foreign_host_header():
+    # DNS rebinding: a page from another site that resolves its own name to
+    # 127.0.0.1 reaches the API with that name in Host. Loopback names work.
+    _, view = build_chain()
+    client = _client(create_app([view]))
+    for host in ("127.0.0.1:8710", "localhost:8710", "[::1]:8710"):
+        assert client.get("/api/graph", headers={"host": host}).status_code == 200
+    for host in ("attacker.example", "attacker.example:8710", "127.0.0.1.attacker.example"):
+        assert client.get("/api/graph", headers={"host": host}).status_code == 400
+        assert client.get("/", headers={"host": host}).status_code == 400
+
+
+def test_api_bound_to_every_interface_answers_any_host():
+    # --host 0.0.0.0 exposes the studio on purpose: the name a remote browser
+    # uses is not known in advance.
+    _, view = build_chain()
+    client = TestClient(create_app([view], host="0.0.0.0"))
+    assert client.get("/api/graph").status_code == 200
+
+
+@pytest.mark.parametrize("patch", [
+    {"entry_id": ["x"]},
+    {"node_id": ["n0"]},
+    {"channel": ["lidar_2x"]},
+    {"index": None},
+    {"index": "x"},
+    {"index": 1.5},
+    {"kwargs": "factor=2"},
+])
+def test_try_rejects_a_malformed_payload_with_400(patch):
+    client = catalog_client()
+    node = next(n for n in client.get("/api/graph").json()["nodes"]
+                if n["label"] == "FilteredView")
+    payload = {"entry_id": "fake_transforms.Scale", "node_id": node["id"],
+               "channel": "lidar_2x", "kwargs": {}, "index": 0, **patch}
+    assert client.post("/api/try", json=payload).status_code == 400
+
+
+# ------------------------------------------------- what reaches the browser
+
+
+def test_encode_array_refuses_object_arrays():
+    # tobytes() of an object array is its heap pointers: never send them.
+    from apairo_visu.studio import protocol
+
+    with pytest.raises(TypeError, match="object"):
+        protocol.encode_array(np.array([1.0, None], dtype=object))
+    with pytest.raises(TypeError):
+        protocol.encode_array(np.array(["a", "b"]))
+    encoded = protocol.encode_channels({"obj": np.array([1, None], dtype=object),
+                                        "text": np.array(["a", "b"])}, 100)
+    assert set(encoded["obj"]) == {"repr"} and set(encoded["text"]) == {"repr"}
+
+
+def test_encode_array_sends_big_endian_data_little_endian():
+    from apairo_visu.studio import protocol
+
+    arr = np.arange(3, dtype=">f4")
+    encoded = protocol.encode_array(arr)
+    assert encoded["dtype"] == "float32"
+    np.testing.assert_array_equal(protocol.decode_array(encoded), arr)
+
+
+def test_try_reports_an_object_result_as_an_error():
+    cat = _test_catalog()
+
+    def to_object(arr):
+        return arr.astype(object)
+
+    to_object.__module__ = "fake_transforms"
+    import types
+    mod = types.ModuleType("fake_transforms")
+    mod.to_object = to_object
+    cat._scan_module(mod)
+    _, view = build_chain()
+    client = _client(create_app([view], catalog=cat))
+    node = next(n for n in client.get("/api/graph").json()["nodes"]
+                if n["label"] == "FilteredView")
+    result = client.post("/api/try", json={
+        "entry_id": "fake_transforms.to_object", "node_id": node["id"],
+        "channel": "lidar_2x", "kwargs": {}, "index": 0,
+    }).json()
+    assert "after" not in result
+    assert "object" in result["error"]
+
+
+# ----------------------------------------------- snippet matches the result
+
+
+def _sample_level_catalog():
+    """Entries that only work on a whole Sample, like AccumulateFrames and
+    ApplyPose: one without input_keys (found by the fallback), one declaring
+    them (a preprocessor) and returning the Sample."""
+    import types
+
+    from apairo_visu.studio.catalog import Catalog
+
+    mod = types.ModuleType("fake_sample_level")
+
+    class Offset:
+        """Add pose[0] to every lidar row (sample in, sample out)."""
+
+        def __call__(self, sample):
+            sample.data["lidar"] = sample.data["lidar"] + sample.data["pose"][0]
+            return sample
+
+    class Publish:
+        """Declares what it reads and writes; returns the Sample."""
+
+        input_keys = ["lidar"]
+        output_keys = ["lidar_up"]
+
+        def __call__(self, sample):
+            sample.data["lidar_up"] = sample.data["lidar"] + 1
+            return sample
+
+    Offset.__module__ = Publish.__module__ = "fake_sample_level"
+    mod.Offset, mod.Publish = Offset, Publish
+    cat = Catalog(packages=())
+    cat._scan_module(mod)
+    return cat
+
+
+def test_sample_level_fallback_gets_a_sample_level_snippet():
+    cat = _sample_level_catalog()
+    channels = {"lidar": np.zeros((3, 3)), "pose": np.array([5.0])}
+    after, snippet = cat.try_apply("fake_sample_level.Offset", {}, channels, "lidar")
+    np.testing.assert_array_equal(after, np.full((3, 3), 5.0))
+    # The per-channel form would hand Offset an array and fail: the snippet
+    # must be the form that produced `after`.
+    assert snippet.endswith("ds = ds.transform(Offset())")
+
+
+def test_preprocessor_returning_a_sample_shows_its_declared_output():
+    cat = _sample_level_catalog()
+    channels = {"lidar": np.zeros((3, 3)), "pose": np.array([5.0])}
+    after = cat.apply("fake_sample_level.Publish", {}, channels, "lidar")
+    assert after.dtype != object
+    np.testing.assert_array_equal(after, np.ones((3, 3)))
+
+
+def test_cli_sync_on_unknown_channel_errors(tmp_path, monkeypatch, capsys):
+    import apairo
+
+    from apairo_visu import studio
+    from apairo_visu.studio import cli
+
+    class FakeDs:
+        def synchronize(self, reference=None, method=None, tolerance=None):
+            raise KeyError(f"Reference channel {reference!r} not in dataset keys ['lidar'].")
+
+    monkeypatch.setattr(apairo, "RawDataset", lambda d, keys=None: FakeDs())
+    monkeypatch.setattr(studio, "launch", lambda *ds, **kw: pytest.fail("launched"))
+    assert cli.main([str(tmp_path), "--sync", "lidarr", "--no-browser"]) == 1
+    assert "cannot synchronize on 'lidarr'" in capsys.readouterr().err

@@ -158,6 +158,38 @@ def _auto_mount(ds):
     return None
 
 
+class _RangeWithLabels:
+    """``--range`` on a cloud *and* its per-point labels: one mask for both,
+    so each kept point keeps its own class id."""
+
+    def __init__(self, lidar: str, labels: str, range_filter) -> None:
+        self.lidar, self.labels, self.range_filter = lidar, labels, range_filter
+
+    def __call__(self, sample):
+        data = sample.data
+        if self.lidar not in data:
+            return sample
+        pts = np.asarray(data[self.lidar])
+        mask = self.range_filter.compute_mask(pts)
+        data[self.lidar] = pts[mask]
+        if self.labels in data:
+            labels = np.asarray(data[self.labels])
+            if len(labels) != len(pts):
+                raise ValueError(
+                    f"--range: {len(labels)} labels in {self.labels!r} for "
+                    f"{len(pts)} points in {self.lidar!r}"
+                )
+            data[self.labels] = labels[mask]
+        return sample
+
+
+def _apply_range(ds, lidar: str, labels: Optional[str], range_filter):
+    """Register ``--range`` on *lidar* -- on its paired *labels* too, if any."""
+    if labels is None:
+        return ds.transform(lidar, range_filter, in_place=False)
+    return ds.transform(_RangeWithLabels(lidar, labels, range_filter), in_place=False)
+
+
 def _make_colormap(mode: str):
     """Per-point colouring callable for ``Pipeline.colormap_fn`` (``pts -> (N,3)``)."""
     if mode == "height":
@@ -308,6 +340,12 @@ def main(argv: Optional[list[str]] = None) -> int:
     if labels_x:
         pairs = labels_x if len(labels_x) == len(lidar_x) else labels_x * len(lidar_x)
         label_for = dict(zip(lidar_x, pairs))
+        if args.range_max is not None and len(set(label_for.values())) < len(label_for):
+            # --range filters each cloud's labels with that cloud's own mask:
+            # one labels channel cannot be cut two ways.
+            print("--range with --labels needs one --labels channel per --lidar "
+                  "channel.", file=sys.stderr)
+            return 1
         # --label-config is only a legend (class names + fixed colours) for a
         # known semantic table; any label id colours fine without one -- Rerun
         # auto-assigns a stable colour per id.
@@ -413,7 +451,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             ds = ds.transform(pose_x, PoseTo4x4(), in_place=False)
         for lk in lidar_x:
             if args.range_max is not None:
-                ds = ds.transform(lk, RangeFilter(max=args.range_max), in_place=False)
+                ds = _apply_range(ds, lk, label_for.get(lk), RangeFilter(max=args.range_max))
             if mount is not None:
                 ds = ds.transform(lk, TransformPoints(mount), in_place=False)
             if pose_x:
@@ -430,7 +468,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         ds = ds.transform(pose_x, PoseTo4x4(), in_place=False)  # pose channel -> 4x4 (passthrough if already)
         for lk in lidar_x:
             if args.range_max is not None:
-                ds = ds.transform(lk, RangeFilter(max=args.range_max), in_place=False)
+                ds = _apply_range(ds, lk, label_for.get(lk), RangeFilter(max=args.range_max))
             if mount is not None:
                 ds = ds.transform(lk, TransformPoints(mount), in_place=False)
             ds = ds.transform(ApplyPose(lidar=lk, pose=pose_x), in_place=False)  # dynamic pose -> world frame
@@ -438,7 +476,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     else:
         for lk in lidar_x:
             if args.range_max is not None:
-                ds = ds.transform(lk, RangeFilter(max=args.range_max), in_place=False)
+                ds = _apply_range(ds, lk, label_for.get(lk), RangeFilter(max=args.range_max))
             if mount is not None:
                 ds = ds.transform(lk, TransformPoints(mount), in_place=False)
         if single_sequence:

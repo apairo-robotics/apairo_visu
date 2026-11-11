@@ -29,6 +29,7 @@ Keyboard shortcuts:
 from __future__ import annotations
 
 import time
+import traceback
 from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
@@ -574,21 +575,40 @@ class LidarViewer:
         if i < len(self._timing_labels):
             self._timing_labels[i].text = f"{self._pipelines[i].name}: …"
 
-        def _run() -> None:
-            t0 = time.perf_counter()
+        self._executor.submit(self._run_pipeline_job, current_id, i, pts, labels, frame_idx)
+
+    def _run_pipeline_job(
+        self,
+        refresh_id: int,
+        i: int,
+        pts: np.ndarray,
+        labels: np.ndarray | None,
+        frame_idx: int,
+    ) -> None:
+        """Worker-thread body: run pipeline *i*, post the result -- or the
+        failure -- to the GUI thread. Nothing reads the future, so an
+        exception left in it would vanish and the viewport keep the previous
+        frame's cloud under the new frame number."""
+        t0 = time.perf_counter()
+        try:
             p_pts, p_labels = self._pipelines[i].run(
                 pts.copy(),
                 labels.copy() if labels is not None else None,
                 frame_idx=frame_idx,
             )
-            elapsed_ms = (time.perf_counter() - t0) * 1000
+        except Exception as exc:
+            traceback.print_exc()
             gui.Application.instance.post_to_main_thread(
                 self._window,
-                lambda p=p_pts, l=p_labels, t=elapsed_ms:
-                    self._on_pipeline_done(current_id, i, p, l, t),
+                lambda e=exc: self._on_pipeline_failed(refresh_id, i, e),
             )
-
-        self._executor.submit(_run)
+            return
+        elapsed_ms = (time.perf_counter() - t0) * 1000
+        gui.Application.instance.post_to_main_thread(
+            self._window,
+            lambda p=p_pts, l=p_labels, t=elapsed_ms:
+                self._on_pipeline_done(refresh_id, i, p, l, t),
+        )
 
     def _on_class_toggle(self, cls_id: int, checked: bool) -> None:
         p = self._filter_pipe_idx
@@ -700,23 +720,11 @@ class LidarViewer:
         current_id = self._refresh_id
         frame_idx  = self.current_idx
 
-        def _run(i: int) -> None:
-            t0 = time.perf_counter()
-            p_pts, p_labels = self._pipelines[i].run(
-                pts.copy(),
-                labels.copy() if labels is not None else None,
-                frame_idx=frame_idx,
-            )
-            elapsed_ms = (time.perf_counter() - t0) * 1000
-            gui.Application.instance.post_to_main_thread(
-                self._window,
-                lambda i=i, p=p_pts, l=p_labels, t=elapsed_ms:
-                    self._on_pipeline_done(current_id, i, p, l, t),
-            )
-
         for i in range(len(self._pipelines)):
             if self._pipeline_active[i]:
-                self._executor.submit(_run, i)
+                self._executor.submit(
+                    self._run_pipeline_job, current_id, i, pts, labels, frame_idx
+                )
             else:
                 # Clear stale cache so the viewport re-renders when re-enabled
                 self._cached_pts[i]          = None
@@ -752,6 +760,21 @@ class LidarViewer:
         if self._show_traj and self._poses is not None and i == 0:
             self._update_trajectory()
 
+    def _on_pipeline_failed(self, refresh_id: int, i: int, exc: Exception) -> None:
+        """Pipeline *i* raised on the current frame: say so and clear its
+        viewport rather than leave the previous frame's cloud on screen."""
+        if refresh_id != self._refresh_id:
+            return  # user navigated away; discard stale result
+
+        self._cached_pts[i]    = None
+        self._cached_labels[i] = None
+        self._scenes[i].scene.remove_geometry("cloud")
+
+        if i < len(self._timing_labels):
+            self._timing_labels[i].text = (
+                f"{self._pipelines[i].name}: FAILED -- {type(exc).__name__}: {exc}"
+            )
+
     # ------------------------------------------------------------------
     # Rendering
     # ------------------------------------------------------------------
@@ -766,7 +789,11 @@ class LidarViewer:
         mask = np.ones(len(xyz), dtype=bool)
 
         if self._display_mode == 0 and labels is not None:
-            mask = np.isin(labels, list(self._active_classes_list[i]))
+            # Hide only the classes unticked in the filter: a label the list
+            # does not offer (absent from semantic_map) cannot be ticked, so
+            # it stays visible -- grey when the colour map lacks it too.
+            hidden = set(self._class_ids_list[i]) - self._active_classes_list[i]
+            mask = ~np.isin(labels, list(hidden))
 
         xyz_f = xyz[mask].astype(np.float64)
         if len(xyz_f) == 0:

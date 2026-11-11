@@ -285,3 +285,41 @@ def test_builtin_layout_no_overlap_and_both_themes():
     assert light != dark and "<svg" in light and "<svg" in dark
     with pytest.raises(ValueError):
         graph_render.to_svg(merged, theme="sepia")
+
+
+def test_preprocessor_output_is_the_writer_its_consumers_hang_from():
+    # transform(preprocessor) without output= writes the channels the
+    # preprocessor declares: steps reading them depend on it, not on the
+    # dataset.
+    from apairo import FramePreprocessor
+
+    class Voxelise(FramePreprocessor):
+        input_keys = ["lidar"]
+        output_key = "voxelised"
+
+        def __call__(self, sample):
+            return sample.data["lidar"][::2]
+
+    def halve(arr):
+        return arr[::2]
+
+    ds = ArrayDataset().transform(Voxelise(), in_place=False)
+    ds = ds.transform("voxelised", halve, output="vox_half", in_place=False)
+    spec = graph.describe(ds)
+    ids = {n.label: n.id for n in spec.nodes}
+    (into_halve,) = [e for e in spec.edges if e.dst == ids["halve"]]
+    assert (into_halve.src, into_halve.label) == (ids["Voxelise"], "voxelised")
+
+
+def test_inference_view_shows_the_chain_it_runs():
+    def halve(arr):
+        return arr[::2]
+
+    ds = ArrayDataset().transform("lidar", halve, output="lidar_h", in_place=False)
+    spec = graph.describe(ds.inference(["lidar_h"]))
+    labels = node_labels(spec)
+    assert labels[0] == "InferenceView"
+    assert "halve" in labels and "ArrayDataset" in labels
+    ids = {n.label: n.id for n in spec.nodes}
+    assert any(e.src == ids["halve"] and e.dst == ids["InferenceView"]
+               for e in spec.edges)

@@ -171,21 +171,32 @@ class Catalog:
         return functools.partial(entry.obj, **coerced), coerced
 
     def apply(self, entry_id: str, kwargs: dict, channels: dict, channel: str):
-        """Run one entry on one frame -> the resulting array.
+        """Run one entry on one frame -> the resulting array (see :meth:`try_apply`)."""
+        return self.try_apply(entry_id, kwargs, channels, channel)[0]
+
+    def try_apply(
+        self, entry_id: str, kwargs: dict, channels: dict, channel: str
+    ) -> tuple[np.ndarray, str]:
+        """Run one entry on one frame -> ``(resulting array, snippet)``.
 
         Per-channel callables get the channel array; preprocessors (and
         sample-level callables, as a fallback) get a Sample carrying all the
-        frame's channels.  Raises with the underlying message on failure --
-        the UI shows it verbatim.
+        frame's channels.  The snippet is written for the form that actually
+        ran, so pasting it reproduces the displayed result.  Raises with the
+        underlying message on failure -- the UI shows it verbatim.
         """
         entry = self.entries[entry_id]
         fn, _ = self._instantiate(entry, kwargs)
         from apairo.core.sample import Sample
 
         if entry.is_preprocessor:
-            return np.asarray(fn(Sample(data=dict(channels))))
+            result = fn(Sample(data=dict(channels)))
+            return (
+                _published(fn, result, channels, channel),
+                self.snippet(entry_id, kwargs, channel),
+            )
         try:
-            return np.asarray(fn(np.asarray(channels[channel])))
+            result = np.asarray(fn(np.asarray(channels[channel])))
         except Exception as array_err:
             # Sample-level transform? Retry with the full sample and report
             # the changed / newly published channel.
@@ -193,13 +204,17 @@ class Catalog:
                 result = fn(Sample(data=dict(channels)))
             except Exception:
                 raise array_err from None
-            if hasattr(result, "data"):
-                new = [k for k in result.data if k not in channels]
-                key = new[0] if new else channel
-                return np.asarray(result.data[key])
-            return np.asarray(result)
+            return (
+                _published(fn, result, channels, channel),
+                self.snippet(entry_id, kwargs, channel, sample_level=True),
+            )
+        return result, self.snippet(entry_id, kwargs, channel)
 
-    def snippet(self, entry_id: str, kwargs: dict, channel: str) -> str:
+    def snippet(
+        self, entry_id: str, kwargs: dict, channel: str, sample_level: bool = False
+    ) -> str:
+        """The ``ds.transform(...)`` line for an entry: per-channel by
+        default, ``transform(obj)`` for a preprocessor or when *sample_level*."""
         entry = self.entries[entry_id]
         _, coerced = self._instantiate(entry, kwargs)
         args = ", ".join(f"{k}={v!r}" for k, v in coerced.items())
@@ -211,12 +226,36 @@ class Catalog:
             call = f"partial({entry.name}, {args})" if args else entry.name
             imports = f"from functools import partial\n" * bool(args) + \
                 f"from {entry.module} import {entry.name}"
-        if entry.is_preprocessor:
+        if entry.is_preprocessor or sample_level:
             return f"{imports}\n\nds = ds.transform({call})"
         return (
             f"{imports}\n\n"
             f'ds = ds.transform("{channel}", {call}, output="{output}")'
         )
+
+
+def _published(fn, result, channels: dict, channel: str) -> np.ndarray:
+    """The array a sample-level call produced, as ``ds.transform`` publishes it.
+
+    A returned Sample is searched for the channel *fn* declares it writes,
+    then a channel it added, then *channel* itself; a dict (multi-output
+    preprocessor) yields its first declared output.  Never a Sample or dict
+    wrapped in an object array.
+    """
+    declared = list(getattr(fn, "outputs", None) or getattr(fn, "output_keys", None) or [])
+    data = getattr(result, "data", None)
+    if isinstance(data, dict):  # a Sample (an ndarray's .data is a buffer)
+        new = [k for k in data if k not in channels]
+        for key in [*declared, *new, channel]:
+            if key in data:
+                return np.asarray(data[key])
+        raise KeyError(f"the result carries no channel {channel!r}")
+    if isinstance(result, dict):
+        for key in [*declared, *result]:
+            if key in result:
+                return np.asarray(result[key])
+        raise ValueError("the result is an empty dict")
+    return np.asarray(result)
 
 
 def _snake(name: str) -> str:
