@@ -194,9 +194,17 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     if args.sync:
-        dataset = dataset.synchronize(
-            reference=args.sync, method="nearest", tolerance=args.tolerance
-        )
+        try:
+            dataset = dataset.synchronize(
+                reference=args.sync, method="nearest", tolerance=args.tolerance
+            )
+        except (KeyError, ValueError) as exc:
+            # An unknown reference channel (KeyError), an already synchronous
+            # dataset (ValueError): a usage error, not a crash.
+            reason = exc.args[0] if exc.args else exc
+            print(f"apairo studio: cannot synchronize on '{args.sync}': {reason}",
+                  file=sys.stderr)
+            return 1
 
     from . import launch
 

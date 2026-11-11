@@ -13,7 +13,26 @@ import base64
 import numpy as np
 
 
+# dtypes the front decodes (web/src/arrays.js). Anything else -- object
+# arrays above all, whose bytes are heap pointers -- has no faithful binary
+# form there and must not be sent as if it had one.
+SUPPORTED_DTYPES = frozenset({
+    "bool", "int8", "int16", "int32", "int64",
+    "uint8", "uint16", "uint32", "uint64",
+    "float16", "float32", "float64",
+})
+
+
 def encode_array(arr) -> dict:
+    """Encode a numeric array; raise ``TypeError`` for any other dtype."""
+    arr = np.asarray(arr)
+    if arr.dtype.byteorder == ">":  # the front reads little-endian buffers
+        arr = arr.astype(arr.dtype.newbyteorder("<"))
+    if str(arr.dtype) not in SUPPORTED_DTYPES:
+        raise TypeError(
+            f"cannot send an array of dtype {arr.dtype} to the browser: only "
+            f"{', '.join(sorted(SUPPORTED_DTYPES))} arrays are displayed"
+        )
     arr = np.ascontiguousarray(arr)
     return {
         "dtype": str(arr.dtype),
@@ -59,7 +78,7 @@ def encode_channels(data: dict, max_points: int) -> dict:
         except Exception:
             channels[str(name)] = {"repr": repr(value)}
             continue
-        if arr.dtype == object or arr.ndim == 0:
+        if str(arr.dtype) not in SUPPORTED_DTYPES or arr.ndim == 0:
             channels[str(name)] = {"repr": repr(value)}
             continue
         full_rows = None

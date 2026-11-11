@@ -107,3 +107,29 @@ def test_apairo_preprocessor_runs_without_deprecation():
         warnings.simplefilter("error", DeprecationWarning)
         _, labels = Pipeline("p", [Positive()]).run(pts, None)
     np.testing.assert_array_equal(labels, [0, 1])
+
+
+def test_type_error_inside_a_step_is_raised_not_retried():
+    # A step taking frame_idx that raises TypeError itself must not be re-run
+    # without frame_idx (which silently used frame 0's data).
+    calls = []
+
+    def buggy(pts, labels, frame_idx=0):
+        calls.append(frame_idx)
+        len(None)
+        return pts, labels
+
+    with pytest.raises(TypeError):
+        Pipeline("p", [buggy]).run(np.zeros((2, 3)), None, frame_idx=7)
+    assert calls == [7]
+
+
+def test_frame_idx_reaches_a_step_taking_kwargs():
+    seen = {}
+
+    def kw(pts, labels, **extra):
+        seen.update(extra)
+        return pts, labels
+
+    Pipeline("p", [kw]).run(np.zeros((2, 3)), None, frame_idx=3)
+    assert seen == {"frame_idx": 3}

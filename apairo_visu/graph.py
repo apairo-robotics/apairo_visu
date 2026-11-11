@@ -102,9 +102,12 @@ class GraphSpec:
 
 def _upstream(ds) -> list:
     """Datasets *ds* was built from (empty for roots and cached datasets)."""
-    parent = getattr(ds, "_parent", None)  # every single-parent wrapper
-    if parent is not None:
-        return [parent]
+    # `_parent`: every single-parent wrapper; `_inner`: InferenceView, which
+    # runs the pruned chain it was built with.
+    for attr in ("_parent", "_inner"):
+        parent = getattr(ds, attr, None)
+        if parent is not None:
+            return [parent]
     for attr in ("datasets", "_datasets"):  # ConcatDataset (public) / ZipDataset
         children = getattr(ds, attr, None)
         if isinstance(children, (list, tuple)):
@@ -183,8 +186,8 @@ def _callable_name(fn) -> str:
     return name
 
 
-def _step_info(step) -> tuple[str, list[str] | None, str | None]:
-    """``(label, read_channels, written_channel)`` for one ``_pipeline`` step.
+def _step_info(step) -> tuple[str, list[str] | None, list[str]]:
+    """``(label, read_channels, written_channels)`` for one ``_pipeline`` step.
 
     ``read_channels`` is ``None`` for a sample-level callable: it receives the
     whole sample and may touch anything, so it must be treated as a barrier in
@@ -193,13 +196,18 @@ def _step_info(step) -> tuple[str, list[str] | None, str | None]:
     # _ChannelStep: transform(key, fn, output=...) -- provably reads only *key*
     if hasattr(step, "key") and hasattr(step, "fn"):
         output = step.output if step.output is not None else step.key
-        return _callable_name(step.fn), [step.key], output
-    # _PreprocessorStep: transform(preprocessor) -- reads declared input_keys
+        return _callable_name(step.fn), [step.key], [output]
+    # _PreprocessorStep: transform(preprocessor) -- reads declared input_keys,
+    # writes `output=` or else every channel it declares (`outputs`).
     if hasattr(step, "preprocessor") and hasattr(step, "output"):
         inputs = list(getattr(step.preprocessor, "input_keys", None) or [])
-        return type(step.preprocessor).__name__, inputs or None, step.output
+        if step.output is not None:
+            outputs = [step.output]
+        else:
+            outputs = list(getattr(step.preprocessor, "outputs", None) or [])
+        return type(step.preprocessor).__name__, inputs or None, outputs
     # Sample-level: a bare callable, unknown reads/writes.
-    return _callable_name(step), None, None
+    return _callable_name(step), None, []
 
 
 # --------------------------------------------------------------------- walker
@@ -289,9 +297,9 @@ def _visit(ds, spec, memo, counter, registry=None) -> list[tuple[str, str | None
                 deps.setdefault(last_writer.get(key, base), []).append(key)
             for src, keys in deps.items():
                 connect(src, step_node.id, ", ".join(keys))
-            if writes:
-                last_writer[writes] = step_node.id
-        leaves[step_node.id] = writes
+            for key in writes:
+                last_writer[key] = step_node.id
+        leaves[step_node.id] = ", ".join(writes) or None
 
     memo[id(ds)] = list(leaves.items())
     return memo[id(ds)]

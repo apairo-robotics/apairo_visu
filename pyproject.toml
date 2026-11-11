@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "apairo-visu"
-version = "0.1.0"
+version = "0.1.1"
 description = "Interactive 3D LiDAR visualisation for apairo datasets"
 readme = "README.md"
 authors = [

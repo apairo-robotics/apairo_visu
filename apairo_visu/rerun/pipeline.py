@@ -1,31 +1,13 @@
 from __future__ import annotations
 
-import inspect
 import types
 from dataclasses import dataclass, field
 from typing import Callable, Optional, Union
 
 import numpy as np
 
-from ..pipeline import call_preprocessor, is_preprocessor
+from ..pipeline import _accepts_frame_idx, call_preprocessor, is_preprocessor
 from .colormaps import Colormap
-
-
-def _accepts_frame_idx(fn: Callable) -> bool:
-    """Whether *fn* accepts a ``frame_idx`` keyword argument.
-
-    Determined by introspecting the signature once, rather than catching
-    ``TypeError`` from a speculative call — which would silently swallow a
-    genuine ``TypeError`` raised *inside* the step and re-run it (masking the
-    bug and risking double-applied side effects).
-    """
-    try:
-        params = inspect.signature(fn).parameters
-    except (TypeError, ValueError):
-        return False
-    if "frame_idx" in params:
-        return True
-    return any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values())
 
 
 @dataclass

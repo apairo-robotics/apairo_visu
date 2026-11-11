@@ -20,11 +20,13 @@ export function viridis(t) {
   return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f];
 }
 
-// Finite [min,max] bounds of a TypedArray (NaNs ignored).
+// Finite [min,max] bounds of a TypedArray (NaNs ignored). int64 / uint64
+// channels decode to BigInt64Array, whose BigInt elements Number.isFinite
+// rejects: convert first, as every reader of the data does.
 export function finiteRange(arr) {
   let lo = Infinity, hi = -Infinity;
   for (let i = 0; i < arr.length; i++) {
-    const v = arr[i];
+    const v = Number(arr[i]);
     if (Number.isFinite(v)) { if (v < lo) lo = v; if (v > hi) hi = v; }
   }
   if (!Number.isFinite(lo)) return [0, 1];

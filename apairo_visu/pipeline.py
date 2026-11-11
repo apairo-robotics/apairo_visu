@@ -18,6 +18,7 @@ This module imports only numpy; apairo is imported lazily, the first time a
 
 from __future__ import annotations
 
+import inspect
 from dataclasses import dataclass, field
 from typing import Callable
 
@@ -36,6 +37,23 @@ def is_preprocessor(step) -> bool:
     as a deprecated alias of calling the preprocessor.
     """
     return hasattr(step, "input_keys") and (callable(step) or hasattr(step, "process"))
+
+
+def _accepts_frame_idx(fn: Callable) -> bool:
+    """Whether *fn* accepts a ``frame_idx`` keyword argument.
+
+    Determined by introspecting the signature once, rather than catching
+    ``TypeError`` from a speculative call — which would silently swallow a
+    genuine ``TypeError`` raised *inside* the step and re-run it (masking the
+    bug and risking double-applied side effects).
+    """
+    try:
+        params = inspect.signature(fn).parameters
+    except (TypeError, ValueError):
+        return False
+    if "frame_idx" in params:
+        return True
+    return any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values())
 
 
 def call_preprocessor(step, sample):
@@ -114,9 +132,8 @@ class Pipeline:
         for step in self.steps:
             if is_preprocessor(step):
                 labels = _run_preprocessor(step, pts, labels, frame_idx)
+            elif _accepts_frame_idx(step):
+                pts, labels = step(pts, labels, frame_idx=frame_idx)
             else:
-                try:
-                    pts, labels = step(pts, labels, frame_idx=frame_idx)
-                except TypeError:
-                    pts, labels = step(pts, labels)
+                pts, labels = step(pts, labels)
         return pts, labels

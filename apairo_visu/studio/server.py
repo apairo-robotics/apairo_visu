@@ -19,7 +19,7 @@ from pathlib import Path
 
 import numpy as np
 from fastapi import Body, FastAPI, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 from .. import graph_render
@@ -29,6 +29,29 @@ from .registry import StudioRegistry
 
 # Web front (vanilla, zero build) served as-is -- shipped as package data.
 WEB_DIR = Path(__file__).resolve().parent / "web"
+
+
+# Names a browser on this machine reaches a loopback-bound studio by.
+_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+# Bind addresses that listen on every interface: the user chose to expose the
+# studio, so the Host header cannot be checked against a known name.
+_WILDCARD_HOSTS = frozenset({"0.0.0.0", "::", ""})
+
+
+def _allowed_hosts(host: str) -> frozenset[str] | None:
+    """Host names the studio answers to when bound to *host* (None: any)."""
+    host = host.strip("[]").lower()
+    if host in _WILDCARD_HOSTS:
+        return None
+    return _LOOPBACK_HOSTS | {host}
+
+
+def _host_name(header: str) -> str:
+    """The name part of a ``Host`` header (``[::1]:8710`` -> ``::1``)."""
+    header = header.strip().lower()
+    if header.startswith("["):
+        return header[1:].split("]", 1)[0]
+    return header.rsplit(":", 1)[0] if header.count(":") == 1 else header
 
 
 def _encode_preview(arr, max_points: int) -> dict:
@@ -48,6 +71,7 @@ def create_app(
     title: str = "apairo studio",
     max_points: int = 150_000,
     catalog: Catalog | None = None,
+    host: str = "127.0.0.1",
 ) -> FastAPI:
     registry = StudioRegistry(datasets)
     catalog = catalog if catalog is not None else Catalog()
@@ -56,6 +80,23 @@ def create_app(
 
     app = FastAPI(title=f"{title} API", version="0.1")
     app.state.registry = registry
+    allowed_hosts = _allowed_hosts(host)
+
+    # DNS rebinding: a page from another site can resolve its own name to
+    # 127.0.0.1 and then read this API as same-origin. Its requests still
+    # carry that foreign name in the Host header, so a studio bound to a
+    # known address answers only to the names it is reachable by.
+    @app.middleware("http")
+    async def known_host_only(request, call_next):
+        if allowed_hosts is not None:
+            name = _host_name(request.headers.get("host", ""))
+            if name not in allowed_hosts:
+                return PlainTextResponse(
+                    f"unknown Host {name!r}: this studio answers to "
+                    f"{', '.join(sorted(allowed_hosts))}",
+                    status_code=400,
+                )
+        return await call_next(request)
 
     # The front ships with the package and changes with it: force
     # revalidation (cheap: StaticFiles answers 304 via ETag) so a reload
@@ -166,14 +207,23 @@ def create_app(
 
     @app.post("/api/try")
     def try_entry(payload: dict = Body(...)) -> dict:
-        entry_id = payload.get("entry_id")
+        # A malformed request is the client's fault: answer 400, never 500.
+        for field in ("entry_id", "node_id", "channel"):
+            if not isinstance(payload.get(field), str):
+                raise HTTPException(status_code=400, detail=f"{field} must be a string")
+        index = payload.get("index", 0)
+        if isinstance(index, bool) or not isinstance(index, int):
+            raise HTTPException(status_code=400, detail="index must be an integer")
+        kwargs = payload.get("kwargs") or {}
+        if not isinstance(kwargs, dict):
+            raise HTTPException(status_code=400, detail="kwargs must be an object")
+        entry_id = payload["entry_id"]
         if entry_id not in catalog.entries:
             raise HTTPException(status_code=400, detail=f"unknown catalog entry {entry_id!r}")
-        node_id = payload.get("node_id")
-        channel = payload.get("channel")
-        kwargs = payload.get("kwargs") or {}
+        node_id = payload["node_id"]
+        channel = payload["channel"]
         try:
-            result = registry.sample(node_id, int(payload.get("index", 0)))
+            result = registry.sample(node_id, index)
         except IndexError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
         if result is None:
@@ -182,12 +232,17 @@ def create_app(
         if channel not in channels:
             raise HTTPException(status_code=400, detail=f"channel {channel!r} absent at this node")
 
-        out: dict = {"before": _encode_preview(channels[channel], max_points)}
+        try:
+            out: dict = {"before": _encode_preview(channels[channel], max_points)}
+        except TypeError as exc:
+            raise HTTPException(status_code=400, detail=f"channel {channel!r}: {exc}")
         # Coercion/application errors are data, not server faults: the panel
         # shows them verbatim (and retries on the next frame).
         try:
             out["snippet"] = catalog.snippet(entry_id, kwargs, channel)
-            after = catalog.apply(entry_id, kwargs, channels, channel)
+            # The form that ran (per-channel or sample-level) decides the
+            # snippet: re-render it so pasting it gives what is displayed.
+            after, out["snippet"] = catalog.try_apply(entry_id, kwargs, channels, channel)
             out["after"] = _encode_preview(after, max_points)
         except Exception as exc:
             out["error"] = f"{type(exc).__name__}: {exc}"
@@ -216,7 +271,7 @@ def serve(
 ) -> None:
     import uvicorn
 
-    app = create_app(datasets, title=title, max_points=max_points)
+    app = create_app(datasets, title=title, max_points=max_points, host=host)
     url = f"http://{host}:{port}"
     if open_browser:
         threading.Timer(0.8, webbrowser.open, args=(url,)).start()
